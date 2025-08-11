@@ -17,6 +17,7 @@ const superAdminRoutes = require('./routes/super-admin');
 const counselorRatesRoutes = require('./routes/counselor-rates');
 const companyAdminRoutes = require('./routes/company-admin');
 const counselingCenterRoutes = require('./routes/counseling-centers');
+const notificationRoutes = require('./routes/notifications');
 
 const app = express();
 
@@ -47,6 +48,7 @@ app.use('/api/super-admin', superAdminRoutes);
 app.use('/api/counselor-rates', counselorRatesRoutes);
 app.use('/api/company-admin', companyAdminRoutes);
 app.use('/api/counseling-centers', counselingCenterRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Health Check API
 app.get('/api/health', (req, res) => {

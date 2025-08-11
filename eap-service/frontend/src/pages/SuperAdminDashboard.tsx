@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import NotificationBell from '../components/Notifications/NotificationBell.tsx';
 // import CounselorsManagement from '../components/SuperAdmin/CounselorsManagement';
 // import CentersManagement from '../components/SuperAdmin/CentersManagement';
 
@@ -975,8 +976,6 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
   const getPaymentStatusName = (status: string) => {
     const names: { [key: string]: string } = {
       pending: '정산 대기',
-      processing: '지급중',
-      settling: '정산중', 
       completed: '정산완료',
       dispute: '이의 제기'
     };
@@ -986,8 +985,6 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
   const getPaymentStatusColor = (status: string) => {
     const colors: { [key: string]: { bg: string, text: string } } = {
       pending: { bg: '#fff3e0', text: '#ef6c00' },
-      processing: { bg: '#e3f2fd', text: '#1565c0' },
-      settling: { bg: '#f3e5f5', text: '#7b1fa2' },
       completed: { bg: '#e8f5e8', text: '#2e7d32' },
       dispute: { bg: '#ffebee', text: '#c62828' }
     };
@@ -1101,6 +1098,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
             </p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+            <NotificationBell userRole={user?.role || 'super-admin'} />
             <span style={{ color: '#666', fontSize: '14px' }}>
               {user?.name}님 (슈퍼 관리자)
             </span>
@@ -2418,24 +2416,6 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
               <p style={{ fontSize: '24px', fontWeight: 'bold', margin: '0', color: '#f57c00' }}>₩680,000</p>
             </div>
             <div style={{
-              backgroundColor: '#e3f2fd',
-              padding: '15px',
-              borderRadius: '8px',
-              border: '1px solid #bbdefb'
-            }}>
-              <h5 style={{ color: '#1976d2', margin: '0 0 8px 0', fontSize: '14px' }}>💰 지급중</h5>
-              <p style={{ fontSize: '24px', fontWeight: 'bold', margin: '0', color: '#1976d2' }}>₩450,000</p>
-            </div>
-            <div style={{
-              backgroundColor: '#f3e5f5',
-              padding: '15px',
-              borderRadius: '8px',
-              border: '1px solid #ce93d8'
-            }}>
-              <h5 style={{ color: '#7b1fa2', margin: '0 0 8px 0', fontSize: '14px' }}>📊 정산중</h5>
-              <p style={{ fontSize: '24px', fontWeight: 'bold', margin: '0', color: '#7b1fa2' }}>₩320,000</p>
-            </div>
-            <div style={{
               backgroundColor: '#e8f5e8',
               padding: '15px',
               borderRadius: '8px',
@@ -2477,7 +2457,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
                     const totalAmount = sessions * 80000;
                     const tax = totalAmount * (i % 2 === 0 ? 0.033 : 0.1); // 상담사별 다른 세율
                     const netAmount = totalAmount - tax;
-                    const statusOptions = ['pending', 'processing', 'settling', 'completed', 'dispute'];
+                    const statusOptions = ['pending', 'completed', 'dispute'];
                     const status = statusOptions[i % statusOptions.length];
                     const statusColor = getPaymentStatusColor(status);
                     
@@ -2529,36 +2509,6 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
                           <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
                             {status === 'pending' && (
                               <button 
-                                onClick={() => handlePaymentStatusChange(`payment_${i}`, 'processing')}
-                                style={{
-                                  backgroundColor: '#1976d2',
-                                  color: 'white',
-                                  border: 'none',
-                                  padding: '4px 8px',
-                                  borderRadius: '3px',
-                                  fontSize: '11px',
-                                  cursor: 'pointer'
-                                }}>
-                                지급중으로
-                              </button>
-                            )}
-                            {status === 'processing' && (
-                              <button 
-                                onClick={() => handlePaymentStatusChange(`payment_${i}`, 'settling')}
-                                style={{
-                                  backgroundColor: '#7b1fa2',
-                                  color: 'white',
-                                  border: 'none',
-                                  padding: '4px 8px',
-                                  borderRadius: '3px',
-                                  fontSize: '11px',
-                                  cursor: 'pointer'
-                                }}>
-                                정산중으로
-                              </button>
-                            )}
-                            {status === 'settling' && (
-                              <button 
                                 onClick={() => handlePaymentStatusChange(`payment_${i}`, 'completed')}
                                 style={{
                                   backgroundColor: '#2e7d32',
@@ -2569,7 +2519,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
                                   fontSize: '11px',
                                   cursor: 'pointer'
                                 }}>
-                                완료처리
+                                정산완료
                               </button>
                             )}
                             {status === 'completed' && (

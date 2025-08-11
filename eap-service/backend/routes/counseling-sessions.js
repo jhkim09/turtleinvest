@@ -3,6 +3,7 @@ const { body, validationResult } = require('express-validator');
 const CounselingSession = require('../models/CounselingSession');
 const Counselor = require('../models/Counselor');
 const User = require('../models/User');
+const Notification = require('../models/Notification');
 const { auth, authorize } = require('../middleware/auth');
 
 const router = express.Router();
@@ -605,6 +606,24 @@ router.post('/:id/dispute', [auth, authorize(['counselor', 'super-admin'])], [
     session.disputeSubmittedAt = new Date();
 
     await session.save();
+
+    // 상담사에게 알림 전송
+    if (session.counselor) {
+      await Notification.create({
+        recipient: session.counselor,
+        sender: req.user._id,
+        type: 'dispute_submitted',
+        title: '정산 이의제기 알림',
+        message: `${session.appointmentDate.toLocaleDateString('ko-KR')} 상담 세션에 대한 이의제기가 제출되었습니다.\n사유: ${reason}`,
+        data: {
+          sessionId: session._id,
+          disputeType,
+          reason,
+          submittedBy: req.user.name || '관리자'
+        },
+        priority: 'high'
+      });
+    }
 
     const updatedSession = await CounselingSession.findById(id)
       .populate('employee', 'name email')
