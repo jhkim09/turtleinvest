@@ -1,0 +1,23 @@
+{
+  "name": "eap-service",
+  "version": "1.0.0",
+  "description": "Employee Assistance Program Web Service",
+  "scripts": {
+    "dev": "concurrently \"npm run backend:dev\" \"npm run frontend:dev\"",
+    "backend:dev": "cd backend && npm run dev",
+    "frontend:dev": "cd frontend && npm run dev",
+    "backend:install": "cd backend && npm install",
+    "frontend:install": "cd frontend && npm install",
+    "install:all": "npm run backend:install && npm run frontend:install",
+    "build": "npm run frontend:build && npm run backend:setup-static",
+    "frontend:build": "cd frontend && npm run build",
+    "backend:setup-static": "cp -r frontend/build backend/public || xcopy /E /I frontend\\build backend\\public",
+    "start": "cd backend && npm start",
+    "start:prod": "NODE_ENV=production cd backend && npm start",
+    "docker:build": "docker build -t eap-service .",
+    "docker:run": "docker run -p 3000:3000 --env-file .env.production eap-service"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
