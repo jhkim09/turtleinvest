@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import NotificationBell from '../components/Notifications/NotificationBell.tsx';
 
 interface CounselorDashboardProps {
   user: any;
@@ -456,6 +457,7 @@ const CounselorDashboard: React.FC<CounselorDashboardProps> = ({ user, onLogout 
               </p>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+              <NotificationBell userRole={user?.role || 'counselor'} />
               <div style={{ textAlign: 'right' }}>
                 <div style={{ 
                   color: 'white', 
