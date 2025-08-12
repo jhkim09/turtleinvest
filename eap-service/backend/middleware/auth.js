@@ -21,6 +21,7 @@ const auth = async (req, res, next) => {
     }
 
     req.user = user;
+    req.user.id = user._id.toString(); // 호환성을 위해 id 속성 추가
     next();
   } catch (error) {
     res.status(401).json({ message: '유효하지 않은 토큰입니다.' });

@@ -3,9 +3,10 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import axios from 'axios';
 import Login from './pages/Login.tsx';
 import Register from './pages/Register.tsx';
-import Dashboard from './pages/Dashboard.tsx';
+import EmployeeDashboard from './pages/EmployeeDashboard.tsx';
 import ManagerDashboard from './pages/ManagerDashboard.tsx';
 import CounselorDashboard from './pages/CounselorDashboard.tsx';
+import FinancialAdvisorDashboard from './pages/FinancialAdvisorDashboard.tsx';
 import CompanyAdminDashboard from './pages/CompanyAdminDashboard.tsx';
 import SuperAdminDashboard from './pages/SuperAdminDashboard.tsx';
 
@@ -96,9 +97,10 @@ function App() {
               user ? (
                 user.role === 'super-admin' ? <Navigate to="/super-admin" replace /> :
                 user.role === 'counselor' ? <Navigate to="/counselor" replace /> :
+                user.role === 'financial-advisor' ? <Navigate to="/financial-advisor" replace /> :
                 user.role === 'manager' ? <Navigate to="/manager" replace /> :
                 user.role === 'company-admin' ? <Navigate to="/company-admin" replace /> :
-                <Dashboard user={user} onLogout={handleLogout} />
+                <EmployeeDashboard user={user} onLogout={handleLogout} />
               ) : <Navigate to="/login" replace />
             }
           />
@@ -112,6 +114,12 @@ function App() {
             path="/counselor"
             element={
               user ? <CounselorDashboard user={user} onLogout={handleLogout} /> : <Navigate to="/login" replace />
+            }
+          />
+          <Route
+            path="/financial-advisor"
+            element={
+              user ? <FinancialAdvisorDashboard user={user} onLogout={handleLogout} /> : <Navigate to="/login" replace />
             }
           />
           <Route

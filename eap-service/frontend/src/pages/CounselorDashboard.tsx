@@ -62,10 +62,28 @@ const CounselorDashboard: React.FC<CounselorDashboardProps> = ({ user, onLogout 
   const [profileLoading, setProfileLoading] = useState(false);
   const [clients, setClients] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
+  const [goals, setGoals] = useState<any[]>([]);
+  const [showGoalModal, setShowGoalModal] = useState(false);
+  const [goalForm, setGoalForm] = useState({
+    employeeId: '',
+    relatedSessionId: '',
+    sessionType: '',
+    title: '',
+    description: '',
+    category: 'mental-health',
+    targetValue: '',
+    unit: '',
+    targetDate: '',
+    actionSteps: [''],
+    priority: 'medium',
+    counselorNotes: ''
+  });
+  const [goalsLoading, setGoalsLoading] = useState(false);
 
   useEffect(() => {
     fetchCounselorData();
     loadCounselorProfile();
+    loadGoals();
   }, []);
 
   const fetchCounselorData = async () => {
@@ -244,6 +262,126 @@ const CounselorDashboard: React.FC<CounselorDashboardProps> = ({ user, onLogout 
       followUpNeeded: false,
       nextSessionDate: ''
     });
+  };
+
+  const loadGoals = async () => {
+    try {
+      setGoalsLoading(true);
+      const token = localStorage.getItem('token');
+      const response = await axios.get('http://localhost:3000/api/counseling-goals/counselor-goals', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setGoals(response.data.goals || []);
+    } catch (error) {
+      console.error('목표 목록 로드 실패:', error);
+      setGoals([]);
+    } finally {
+      setGoalsLoading(false);
+    }
+  };
+
+  const openGoalModal = (appointment?: any) => {
+    if (appointment) {
+      setGoalForm({
+        employeeId: appointment.client._id,
+        relatedSessionId: appointment._id,
+        sessionType: 'Appointment',
+        title: '',
+        description: '',
+        category: 'mental-health',
+        targetValue: '',
+        unit: '',
+        targetDate: '',
+        actionSteps: [''],
+        priority: 'medium',
+        counselorNotes: ''
+      });
+    } else {
+      setGoalForm({
+        employeeId: '',
+        relatedSessionId: '',
+        sessionType: '',
+        title: '',
+        description: '',
+        category: 'mental-health',
+        targetValue: '',
+        unit: '',
+        targetDate: '',
+        actionSteps: [''],
+        priority: 'medium',
+        counselorNotes: ''
+      });
+    }
+    setShowGoalModal(true);
+  };
+
+  const closeGoalModal = () => {
+    setShowGoalModal(false);
+    setGoalForm({
+      employeeId: '',
+      relatedSessionId: '',
+      sessionType: '',
+      title: '',
+      description: '',
+      category: 'mental-health',
+      targetValue: '',
+      unit: '',
+      targetDate: '',
+      actionSteps: [''],
+      priority: 'medium',
+      counselorNotes: ''
+    });
+  };
+
+  const saveGoal = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      
+      const goalData = {
+        ...goalForm,
+        actionSteps: goalForm.actionSteps.filter(step => step.trim() !== '').map(step => ({ step }))
+      };
+
+      await axios.post('http://localhost:3000/api/counseling-goals', goalData, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      alert('목표가 성공적으로 생성되었습니다!');
+      loadGoals(); // 목표 목록 새로고침
+      closeGoalModal();
+    } catch (error) {
+      console.error('목표 생성 실패:', error);
+      let errorMessage = '목표 생성에 실패했습니다.';
+      if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.response?.data?.errors) {
+        errorMessage = error.response.data.errors.map(e => e.msg).join(', ');
+      }
+      alert(errorMessage);
+    }
+  };
+
+  const addActionStep = () => {
+    setGoalForm(prev => ({
+      ...prev,
+      actionSteps: [...prev.actionSteps, '']
+    }));
+  };
+
+  const updateActionStep = (index: number, value: string) => {
+    setGoalForm(prev => ({
+      ...prev,
+      actionSteps: prev.actionSteps.map((step, i) => i === index ? value : step)
+    }));
+  };
+
+  const removeActionStep = (index: number) => {
+    if (goalForm.actionSteps.length > 1) {
+      setGoalForm(prev => ({
+        ...prev,
+        actionSteps: prev.actionSteps.filter((_, i) => i !== index)
+      }));
+    }
   };
 
   const saveRecord = async () => {
@@ -515,6 +653,7 @@ const CounselorDashboard: React.FC<CounselorDashboardProps> = ({ user, onLogout 
               { name: '오늘 일정', key: 'schedule' },
               { name: '전체 예약', key: 'appointments' },
               { name: '상담 기록', key: 'records' },
+              { name: '목표 관리', key: 'goals' },
               { name: '고객 관리', key: 'clients' },
               { name: '통계', key: 'stats' },
               { name: '프로필 설정', key: 'profile' }
@@ -559,6 +698,7 @@ const CounselorDashboard: React.FC<CounselorDashboardProps> = ({ user, onLogout 
             {activeTab === 'schedule' && '오늘 일정'}
             {activeTab === 'appointments' && '전체 예약'}
             {activeTab === 'records' && '상담 기록'}
+            {activeTab === 'goals' && '목표 관리'}
             {activeTab === 'clients' && '고객 관리'}
             {activeTab === 'stats' && '통계'}
             {activeTab === 'profile' && '프로필 설정'}
@@ -567,6 +707,7 @@ const CounselorDashboard: React.FC<CounselorDashboardProps> = ({ user, onLogout 
             {activeTab === 'schedule' && '오늘의 상담 일정과 업무 현황을 관리하세요'}
             {activeTab === 'appointments' && '모든 상담 예약을 확인하고 관리하세요'}
             {activeTab === 'records' && '작성한 상담 기록을 관리하세요'}
+            {activeTab === 'goals' && '직원들의 목표를 생성하고 진행상황을 모니터링하세요'}
             {activeTab === 'clients' && '고객 정보와 상담 이력을 관리하세요'}
             {activeTab === 'stats' && '상담 성과와 통계를 확인하세요'}
             {activeTab === 'profile' && '프로필과 세금 설정을 관리하세요'}
@@ -751,6 +892,23 @@ const CounselorDashboard: React.FC<CounselorDashboardProps> = ({ user, onLogout 
                           }}
                         >
                           {appointment.counselingRecord ? '기록 수정' : '기록 작성'}
+                        </button>
+                      )}
+                      
+                      {appointment.status === 'completed' && (
+                        <button
+                          onClick={() => openGoalModal(appointment)}
+                          style={{
+                            backgroundColor: '#9c27b0',
+                            color: 'white',
+                            border: 'none',
+                            padding: '6px 12px',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            fontSize: '12px'
+                          }}
+                        >
+                          목표 부여
                         </button>
                       )}
                       
@@ -1230,6 +1388,195 @@ const CounselorDashboard: React.FC<CounselorDashboardProps> = ({ user, onLogout 
           </div>
         )}
 
+        {/* 목표 관리 탭 */}
+        {activeTab === 'goals' && (
+          <div>
+            <div style={{
+              background: 'rgba(255, 255, 255, 0.95)',
+              backdropFilter: 'blur(10px)',
+              padding: '30px',
+              borderRadius: '16px',
+              boxShadow: '0 8px 32px rgba(156, 39, 176, 0.1)',
+              border: '1px solid rgba(255, 255, 255, 0.2)',
+              marginBottom: '30px'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <h3 style={{ color: '#333', margin: '0' }}>🎯 생성한 목표</h3>
+                <button
+                  onClick={() => openGoalModal()}
+                  style={{
+                    backgroundColor: '#9c27b0',
+                    color: 'white',
+                    border: 'none',
+                    padding: '10px 20px',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: '600'
+                  }}
+                >
+                  새 목표 생성
+                </button>
+              </div>
+
+              {goalsLoading ? (
+                <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
+                  목표 목록을 불러오는 중...
+                </div>
+              ) : goals.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
+                  <div style={{ fontSize: '48px', marginBottom: '16px' }}>🎯</div>
+                  <p>생성한 목표가 없습니다.</p>
+                  <p style={{ fontSize: '14px' }}>상담 완료 후 직원에게 목표를 부여해보세요.</p>
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gap: '20px' }}>
+                  {goals.map((goal) => (
+                    <div key={goal._id} style={{
+                      border: '1px solid #e0e0e0',
+                      borderRadius: '12px',
+                      padding: '20px',
+                      background: 'white',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '15px' }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+                            <h4 style={{ margin: '0', color: '#333', fontSize: '18px', fontWeight: '600' }}>
+                              {goal.title}
+                            </h4>
+                            <span style={{
+                              padding: '4px 12px',
+                              borderRadius: '16px',
+                              fontSize: '12px',
+                              fontWeight: '600',
+                              background: goal.status === 'completed' 
+                                ? 'linear-gradient(135deg, #4caf50, #81c784)' 
+                                : goal.status === 'active'
+                                ? 'linear-gradient(135deg, #2196f3, #64b5f6)'
+                                : 'linear-gradient(135deg, #ff9800, #ffb74d)',
+                              color: 'white'
+                            }}>
+                              {goal.status === 'completed' ? '완료' 
+                               : goal.status === 'active' ? '진행중'
+                               : goal.status === 'paused' ? '일시정지' 
+                               : '취소'}
+                            </span>
+                            <span style={{
+                              padding: '4px 8px',
+                              borderRadius: '12px',
+                              fontSize: '11px',
+                              backgroundColor: goal.priority === 'high' 
+                                ? 'rgba(244, 67, 54, 0.1)' 
+                                : goal.priority === 'medium'
+                                ? 'rgba(255, 152, 0, 0.1)'
+                                : 'rgba(76, 175, 80, 0.1)',
+                              color: goal.priority === 'high' 
+                                ? '#f44336' 
+                                : goal.priority === 'medium'
+                                ? '#ff9800'
+                                : '#4caf50'
+                            }}>
+                              {goal.priority === 'high' ? '높음' 
+                               : goal.priority === 'medium' ? '보통' 
+                               : '낮음'}
+                            </span>
+                          </div>
+                          
+                          <div style={{ marginBottom: '12px' }}>
+                            <strong style={{ color: '#666', fontSize: '14px' }}>직원:</strong>
+                            <span style={{ marginLeft: '8px', color: '#333' }}>
+                              {goal.employee?.name} ({goal.employee?.department})
+                            </span>
+                          </div>
+                          
+                          <div style={{ marginBottom: '12px' }}>
+                            <strong style={{ color: '#666', fontSize: '14px' }}>목표:</strong>
+                            <span style={{ marginLeft: '8px', color: '#333' }}>
+                              {goal.targetValue} {goal.unit}
+                            </span>
+                            <span style={{ marginLeft: '16px', color: '#666', fontSize: '14px' }}>
+                              (현재: {goal.currentValue} {goal.unit})
+                            </span>
+                          </div>
+
+                          <div style={{ marginBottom: '12px' }}>
+                            <strong style={{ color: '#666', fontSize: '14px' }}>설명:</strong>
+                            <p style={{ margin: '4px 0 0 0', color: '#555', fontSize: '14px', lineHeight: '1.4' }}>
+                              {goal.description}
+                            </p>
+                          </div>
+
+                          <div style={{ marginBottom: '12px' }}>
+                            <strong style={{ color: '#666', fontSize: '14px' }}>목표 날짜:</strong>
+                            <span style={{ marginLeft: '8px', color: '#333' }}>
+                              {new Date(goal.targetDate).toLocaleDateString('ko-KR')}
+                            </span>
+                            <span style={{ marginLeft: '16px', fontSize: '12px', color: '#666' }}>
+                              (D-{Math.max(0, Math.ceil((new Date(goal.targetDate) - new Date()) / (1000 * 60 * 60 * 24)))})
+                            </span>
+                          </div>
+
+                          <div style={{ marginBottom: '16px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+                              <strong style={{ color: '#666', fontSize: '14px' }}>진행률:</strong>
+                              <span style={{ fontWeight: '600', color: '#333' }}>{goal.progress}%</span>
+                            </div>
+                            <div style={{
+                              width: '100%',
+                              height: '8px',
+                              backgroundColor: '#f0f0f0',
+                              borderRadius: '4px',
+                              overflow: 'hidden'
+                            }}>
+                              <div style={{
+                                width: `${goal.progress}%`,
+                                height: '100%',
+                                background: 'linear-gradient(90deg, #9c27b0, #e91e63)',
+                                transition: 'width 0.3s ease'
+                              }}></div>
+                            </div>
+                          </div>
+
+                          {goal.actionSteps && goal.actionSteps.length > 0 && (
+                            <div>
+                              <strong style={{ color: '#666', fontSize: '14px' }}>실행 단계:</strong>
+                              <div style={{ marginTop: '8px' }}>
+                                {goal.actionSteps.map((step, index) => (
+                                  <div key={index} style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    marginBottom: '4px',
+                                    fontSize: '13px'
+                                  }}>
+                                    <span style={{ 
+                                      color: step.isCompleted ? '#4caf50' : '#ccc',
+                                      fontSize: '14px'
+                                    }}>
+                                      {step.isCompleted ? '✅' : '⭕'}
+                                    </span>
+                                    <span style={{ 
+                                      color: step.isCompleted ? '#666' : '#333',
+                                      textDecoration: step.isCompleted ? 'line-through' : 'none'
+                                    }}>
+                                      {step.step}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* 통계 탭 */}
         {activeTab === 'stats' && (
           <div>
@@ -1704,6 +2051,343 @@ const CounselorDashboard: React.FC<CounselorDashboardProps> = ({ user, onLogout 
                 }}
               >
                 닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 목표 생성 모달 */}
+      {showGoalModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            padding: '30px',
+            borderRadius: '16px',
+            maxWidth: '700px',
+            width: '90%',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.3)'
+          }}>
+            <h3 style={{ color: '#333', margin: '0 0 20px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              🎯 목표 생성
+            </h3>
+
+            <div style={{ display: 'grid', gap: '20px' }}>
+              {/* 직원 선택 (미리 선택된 경우 표시만) */}
+              {goalForm.employeeId ? (
+                <div style={{
+                  backgroundColor: '#f8f9fa',
+                  padding: '15px',
+                  borderRadius: '8px',
+                  border: '1px solid #e9ecef'
+                }}>
+                  <strong>선택된 직원:</strong> {appointments.find(apt => apt.client._id === goalForm.employeeId)?.client.name}
+                </div>
+              ) : (
+                <div>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#333' }}>
+                    대상 직원
+                  </label>
+                  <select
+                    value={goalForm.employeeId}
+                    onChange={(e) => setGoalForm(prev => ({ ...prev, employeeId: e.target.value }))}
+                    style={{
+                      width: '100%',
+                      padding: '12px',
+                      border: '2px solid #e1e1e1',
+                      borderRadius: '8px',
+                      fontSize: '14px'
+                    }}
+                  >
+                    <option value="">직원을 선택하세요</option>
+                    {Array.from(new Map(appointments.map(apt => [apt.client._id, apt.client])).values()).map(client => (
+                      <option key={client._id} value={client._id}>
+                        {client.name} ({client.department})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#333' }}>
+                  목표 제목 *
+                </label>
+                <input
+                  type="text"
+                  value={goalForm.title}
+                  onChange={(e) => setGoalForm(prev => ({ ...prev, title: e.target.value }))}
+                  placeholder="예: 스트레스 관리 기법 습득"
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    border: '2px solid #e1e1e1',
+                    borderRadius: '8px',
+                    fontSize: '14px',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#333' }}>
+                  목표 설명 *
+                </label>
+                <textarea
+                  value={goalForm.description}
+                  onChange={(e) => setGoalForm(prev => ({ ...prev, description: e.target.value }))}
+                  placeholder="목표에 대한 상세한 설명을 작성해주세요"
+                  rows={3}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    border: '2px solid #e1e1e1',
+                    borderRadius: '8px',
+                    fontSize: '14px',
+                    resize: 'vertical',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#333' }}>
+                    카테고리 *
+                  </label>
+                  <select
+                    value={goalForm.category}
+                    onChange={(e) => setGoalForm(prev => ({ ...prev, category: e.target.value }))}
+                    style={{
+                      width: '100%',
+                      padding: '12px',
+                      border: '2px solid #e1e1e1',
+                      borderRadius: '8px',
+                      fontSize: '14px'
+                    }}
+                  >
+                    <option value="mental-health">정신건강</option>
+                    <option value="stress-management">스트레스 관리</option>
+                    <option value="work-life-balance">워라밸</option>
+                    <option value="financial-planning">재무계획</option>
+                    <option value="investment">투자</option>
+                    <option value="saving">저축</option>
+                    <option value="debt-management">부채관리</option>
+                    <option value="career-development">경력개발</option>
+                    <option value="skill-improvement">기술향상</option>
+                    <option value="relationship">인간관계</option>
+                    <option value="other">기타</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#333' }}>
+                    우선순위
+                  </label>
+                  <select
+                    value={goalForm.priority}
+                    onChange={(e) => setGoalForm(prev => ({ ...prev, priority: e.target.value }))}
+                    style={{
+                      width: '100%',
+                      padding: '12px',
+                      border: '2px solid #e1e1e1',
+                      borderRadius: '8px',
+                      fontSize: '14px'
+                    }}
+                  >
+                    <option value="low">낮음</option>
+                    <option value="medium">보통</option>
+                    <option value="high">높음</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 2fr', gap: '15px' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#333' }}>
+                    목표 수치 *
+                  </label>
+                  <input
+                    type="text"
+                    value={goalForm.targetValue}
+                    onChange={(e) => setGoalForm(prev => ({ ...prev, targetValue: e.target.value }))}
+                    placeholder="예: 주 3회, 50만원"
+                    style={{
+                      width: '100%',
+                      padding: '12px',
+                      border: '2px solid #e1e1e1',
+                      borderRadius: '8px',
+                      fontSize: '14px',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#333' }}>
+                    단위 *
+                  </label>
+                  <input
+                    type="text"
+                    value={goalForm.unit}
+                    onChange={(e) => setGoalForm(prev => ({ ...prev, unit: e.target.value }))}
+                    placeholder="회, 원, 점"
+                    style={{
+                      width: '100%',
+                      padding: '12px',
+                      border: '2px solid #e1e1e1',
+                      borderRadius: '8px',
+                      fontSize: '14px',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#333' }}>
+                    목표 날짜 *
+                  </label>
+                  <input
+                    type="date"
+                    value={goalForm.targetDate}
+                    onChange={(e) => setGoalForm(prev => ({ ...prev, targetDate: e.target.value }))}
+                    min={new Date().toISOString().split('T')[0]}
+                    style={{
+                      width: '100%',
+                      padding: '12px',
+                      border: '2px solid #e1e1e1',
+                      borderRadius: '8px',
+                      fontSize: '14px',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <label style={{ fontWeight: 'bold', color: '#333' }}>
+                    실행 단계
+                  </label>
+                  <button
+                    type="button"
+                    onClick={addActionStep}
+                    style={{
+                      backgroundColor: '#9c27b0',
+                      color: 'white',
+                      border: 'none',
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    + 단계 추가
+                  </button>
+                </div>
+                {goalForm.actionSteps.map((step, index) => (
+                  <div key={index} style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                    <input
+                      type="text"
+                      value={step}
+                      onChange={(e) => updateActionStep(index, e.target.value)}
+                      placeholder={`단계 ${index + 1}`}
+                      style={{
+                        flex: 1,
+                        padding: '10px',
+                        border: '1px solid #e1e1e1',
+                        borderRadius: '6px',
+                        fontSize: '14px'
+                      }}
+                    />
+                    {goalForm.actionSteps.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeActionStep(index)}
+                        style={{
+                          backgroundColor: '#f44336',
+                          color: 'white',
+                          border: 'none',
+                          padding: '10px 12px',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontSize: '12px'
+                        }}
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#333' }}>
+                  상담사 메모 (선택)
+                </label>
+                <textarea
+                  value={goalForm.counselorNotes}
+                  onChange={(e) => setGoalForm(prev => ({ ...prev, counselorNotes: e.target.value }))}
+                  placeholder="추가 메모나 주의사항"
+                  rows={2}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    border: '2px solid #e1e1e1',
+                    borderRadius: '8px',
+                    fontSize: '14px',
+                    resize: 'vertical',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '30px' }}>
+              <button
+                onClick={closeGoalModal}
+                style={{
+                  backgroundColor: '#f5f5f5',
+                  color: '#333',
+                  border: '1px solid #ddd',
+                  padding: '12px 24px',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '14px'
+                }}
+              >
+                취소
+              </button>
+              <button
+                onClick={saveGoal}
+                disabled={!goalForm.employeeId || !goalForm.title || !goalForm.description || !goalForm.targetValue || !goalForm.unit || !goalForm.targetDate}
+                style={{
+                  backgroundColor: goalForm.employeeId && goalForm.title && goalForm.description && goalForm.targetValue && goalForm.unit && goalForm.targetDate 
+                    ? '#9c27b0' : '#ccc',
+                  color: 'white',
+                  border: 'none',
+                  padding: '12px 24px',
+                  borderRadius: '8px',
+                  cursor: goalForm.employeeId && goalForm.title && goalForm.description && goalForm.targetValue && goalForm.unit && goalForm.targetDate 
+                    ? 'pointer' : 'not-allowed',
+                  fontSize: '14px',
+                  fontWeight: '600'
+                }}
+              >
+                목표 생성
               </button>
             </div>
           </div>

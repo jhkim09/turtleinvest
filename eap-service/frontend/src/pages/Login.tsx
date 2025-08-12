@@ -279,10 +279,11 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
           color: '#1565c0'
         }}>
           <strong>테스트 계정:</strong><br />
-          Email: test@example.com<br />
-          Password: 123456<br />
+          심리상담사: counselor@test.com / password123<br />
+          재무상담사: financial@test.com / password123<br />
+          관리자: admin@test.com / admin123<br />
           <br />
-          <em style={{ color: '#666' }}>위 계정은 "사용자 등록 테스트" 버튼으로 먼저 생성해주세요.</em>
+          <em style={{ color: '#666' }}>백엔드 폴더에서 node create_test_user.js로 생성</em>
         </div>
       </div>
     </div>

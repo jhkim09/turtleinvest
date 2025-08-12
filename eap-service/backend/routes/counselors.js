@@ -18,15 +18,31 @@ router.get('/', [auth, authorize(['super-admin'])], async (req, res) => {
       filter.isActive = isActive === 'true';
     }
 
-    // User 모델에서 상담사 role을 가진 사용자들 조회
-    const counselors = await User.find({ role: 'counselor', ...filter })
+    console.log('상담사 목록 조회 요청');
+    console.log('필터:', filter);
+    console.log('페이지:', page, '제한:', limit);
+
+    // User 모델에서 상담사 role을 가진 사용자들 조회 (심리상담사 + 재무상담사)
+    const query = { 
+      role: { $in: ['counselor', 'financial-advisor'] }, 
+      ...filter 
+    };
+    console.log('MongoDB 쿼리:', query);
+
+    const counselors = await User.find(query)
       .select('-password')
       .populate('counselingCenter', 'name')
       .limit(limit * 1)
       .skip((page - 1) * limit)
       .sort({ createdAt: -1 });
 
-    const total = await User.countDocuments({ role: 'counselor', ...filter });
+    console.log(`조회된 상담사 수: ${counselors.length}`);
+    counselors.forEach((counselor, index) => {
+      console.log(`${index + 1}. ${counselor.name} (${counselor.role})`);
+    });
+
+    const total = await User.countDocuments(query);
+    console.log('전체 상담사 수:', total);
 
     res.json({
       counselors,
@@ -86,18 +102,26 @@ router.post('/', [auth, authorize(['super-admin'])], [
   body('customRate').optional().isInt({ min: 0 }).withMessage('상담 단가는 0 이상이어야 합니다.'),
   body('taxRate').optional().isIn([3.3, 10]).withMessage('세금률은 3.3% 또는 10%여야 합니다.'),
   body('isIndependent').optional().isBoolean().withMessage('개인자격 여부는 true/false여야 합니다.'),
-  body('counselingCenterId').optional().isMongoId().withMessage('유효한 상담센터 ID여야 합니다.')
+  body('counselingCenterId').optional().isMongoId().withMessage('유효한 상담센터 ID여야 합니다.'),
+  body('role').optional().isIn(['counselor', 'financial-advisor']).withMessage('역할은 counselor 또는 financial-advisor여야 합니다.')
 ], async (req, res) => {
   try {
+    console.log('상담사 등록 요청 데이터:', req.body);
+    
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      console.log('Validation 오류:', errors.array());
+      return res.status(400).json({ 
+        message: '입력 데이터 검증 실패', 
+        errors: errors.array() 
+      });
     }
 
     const {
       name, email, phone, password, 
       counselingCenterId, isIndependent = true,
-      customRate, useSystemRate = true, taxRate = 3.3
+      customRate, useSystemRate = true, taxRate = 3.3,
+      role = 'counselor'
     } = req.body;
 
     // 이메일 중복 체크 (User 모델에서)
@@ -127,7 +151,7 @@ router.post('/', [auth, authorize(['super-admin'])], [
       email,
       phone,
       password,
-      role: 'counselor',
+      role,
       counselingCenter: (!isIndependent && counselingCenterId) ? counselingCenterId : undefined,
       isIndependent,
       customRate,
@@ -185,8 +209,8 @@ router.put('/:id', [auth, authorize(['super-admin', 'counselor'])], async (req, 
     }
 
     const updateFields = {};
-    const allowedFields = ['name', 'phone', 'specialties', 'rates', 'maxDailyAppointments'];
-    const superAdminFields = ['isActive', 'experience', 'counselingCenter', 'isIndependent'];
+    const allowedFields = ['name', 'phone', 'specialties', 'rates', 'maxDailyAppointments', 'customRate', 'taxRate'];
+    const superAdminFields = ['isActive', 'experience', 'counselingCenter', 'isIndependent', 'role', 'counselingCenterId'];
 
     // 일반 필드 업데이트
     allowedFields.forEach(field => {
@@ -199,7 +223,12 @@ router.put('/:id', [auth, authorize(['super-admin', 'counselor'])], async (req, 
     if (req.user.role === 'super-admin') {
       superAdminFields.forEach(field => {
         if (req.body[field] !== undefined) {
-          updateFields[field] = req.body[field];
+          if (field === 'counselingCenterId') {
+            // counselingCenterId는 counselingCenter로 매핑
+            updateFields['counselingCenter'] = req.body[field] || undefined;
+          } else {
+            updateFields[field] = req.body[field];
+          }
         }
       });
     }

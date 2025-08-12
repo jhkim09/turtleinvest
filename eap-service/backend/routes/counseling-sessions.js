@@ -286,7 +286,7 @@ router.put('/:id/status', [auth], [
 
     // 완료 시 상담사 통계 업데이트
     if (status === 'completed') {
-      await Counselor.findByIdAndUpdate(session.counselor, {
+      await User.findByIdAndUpdate(session.counselor, {
         $inc: { totalSessions: 1 }
       });
     }
@@ -378,7 +378,7 @@ router.put('/:id/rating', [auth, authorize(['employee'])], [
     await session.save();
 
     // 상담사 평점 업데이트
-    const counselor = await Counselor.findById(session.counselor);
+    const counselor = await User.findById(session.counselor);
     if (counselor) {
       const newTotalRatings = counselor.totalRatings + 1;
       const newRating = ((counselor.rating * counselor.totalRatings) + rating) / newTotalRatings;

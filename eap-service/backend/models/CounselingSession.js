@@ -8,7 +8,7 @@ const counselingSessionSchema = new mongoose.Schema({
   },
   counselor: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Counselor',
+    ref: 'User',
     required: false // 초기 생성 시에는 필요 없음, 배정 시 설정
   },
   company: {
@@ -48,14 +48,32 @@ const counselingSessionSchema = new mongoose.Schema({
     enum: ['low', 'medium', 'high', 'critical'],
     default: 'medium'
   },
-  // 상담 기록 (상담사와 직원만 열람 가능)
-  sessionNotes: {
-    type: String,
-    private: true // 직원과 상담사만 접근
-  },
-  recommendations: {
-    type: String,
-    private: true
+  // 상담 기록
+  sessionRecord: {
+    // 🔓 공유 데이터 (직원과 상담사 모두 볼 수 있음)
+    sharedContent: {
+      sessionSummary: { type: String }, // 세션 요약
+      generalTopics: [String], // 일반적인 주제들
+      copingStrategies: [String], // 대처 방안
+      wellnessGoals: [String], // 웰빙 목표
+      nextSteps: [String], // 다음 단계
+      followUpNeeded: { type: Boolean, default: false },
+      nextSessionDate: { type: Date },
+      progressNotes: { type: String } // 진전사항
+    },
+    
+    // 🔒 상담사 전용 데이터 (상담사만 볼 수 있음)
+    counselorOnlyContent: {
+      clinicalAssessment: { type: String }, // 임상적 평가
+      psychologicalState: { type: String }, // 심리상태 분석
+      riskAssessment: { type: String }, // 위험 평가
+      confidentialNotes: { type: String }, // 기밀 상담 노트
+      treatmentPlan: { type: String }, // 치료 계획
+      professionalObservations: { type: String }, // 전문가 관찰
+      mentalHealthConcerns: [String], // 정신건강 우려사항
+      referralNeeded: { type: Boolean, default: false }, // 전문의 의뢰 필요
+      referralNotes: { type: String } // 의뢰 관련 메모
+    }
   },
   // 위기 상황 관리 (수퍼어드민용)
   isCrisisCase: {

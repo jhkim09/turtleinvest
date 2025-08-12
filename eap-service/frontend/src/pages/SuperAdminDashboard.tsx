@@ -113,6 +113,8 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
   const [showAddCompany, setShowAddCompany] = useState(false);
   // 상담사 생성 폼
   const [showAddCounselor, setShowAddCounselor] = useState(false);
+  const [showEditCounselor, setShowEditCounselor] = useState(false);
+  const [editingCounselor, setEditingCounselor] = useState(null);
   
   // 단가 설정 모달
   const [showRateModal, setShowRateModal] = useState(false);
@@ -129,6 +131,12 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
     specialties: [''],
     licenseNumber: '',
     experience: 0,
+    role: 'counselor', // 기본값: 심리상담사
+    customRate: 80000,
+    useSystemRate: false,
+    taxRate: 3.3,
+    isIndependent: true,
+    counselingCenterId: '',
     rates: {
       faceToFace: 80000,
       phoneVideo: 60000,
@@ -201,6 +209,14 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
         headers: { Authorization: `Bearer ${token}` }
       });
       const counselorsData = counselorsResponse.data?.counselors || counselorsResponse.data || [];
+      
+      console.log('=== 상담사 데이터 확인 ===');
+      console.log('API 응답:', counselorsResponse.data);
+      console.log('상담사 목록:', counselorsData);
+      counselorsData.forEach((counselor, index) => {
+        console.log(`${index + 1}. ${counselor.name} - 역할: ${counselor.role}`);
+      });
+      
       setCounselors(Array.isArray(counselorsData) ? counselorsData : []);
 
       // 상담센터 목록 조회
@@ -615,8 +631,33 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
   const handleCreateCounselor = async () => {
     try {
       const token = localStorage.getItem('token');
+      
+      // API 스키마에 맞게 데이터 정리
+      const counselorData = {
+        name: newCounselor.name,
+        email: newCounselor.email,
+        phone: newCounselor.phone,
+        password: newCounselor.password,
+        role: newCounselor.role,
+        customRate: newCounselor.customRate,
+        useSystemRate: newCounselor.useSystemRate,
+        taxRate: newCounselor.taxRate,
+        isIndependent: newCounselor.isIndependent,
+        counselingCenterId: newCounselor.isIndependent ? undefined : newCounselor.counselingCenterId
+      };
+      
+      console.log('=== 상담사 등록 요청 ===');
+      console.log('보낼 데이터:', counselorData);
+      console.log('각 필드 값:');
+      console.log('- name:', counselorData.name);
+      console.log('- email:', counselorData.email);
+      console.log('- role:', counselorData.role);
+      console.log('- customRate:', counselorData.customRate, typeof counselorData.customRate);
+      console.log('- isIndependent:', counselorData.isIndependent, typeof counselorData.isIndependent);
+      console.log('- taxRate:', counselorData.taxRate, typeof counselorData.taxRate);
+      
       const response = await axios.post('http://localhost:3000/api/counselors', 
-        newCounselor,
+        counselorData,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       
@@ -626,6 +667,15 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
       alert('상담사가 성공적으로 등록되었습니다!');
     } catch (error) {
       console.error('상담사 생성 오류:', error);
+      console.error('오류 상세:', error.response?.data);
+      
+      if (error.response?.data?.errors) {
+        console.error('Validation 오류들:');
+        error.response.data.errors.forEach((err, index) => {
+          console.error(`${index + 1}.`, err);
+        });
+      }
+      
       alert('상담사 등록 중 오류가 발생했습니다: ' + (error.response?.data?.message || error.message));
     }
   };
@@ -639,6 +689,12 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
       specialties: [''],
       licenseNumber: '',
       experience: 0,
+      role: 'counselor',
+      customRate: 80000,
+      useSystemRate: false,
+      taxRate: 3.3,
+      isIndependent: true,
+      counselingCenterId: '',
       rates: {
         faceToFace: 80000,
         phoneVideo: 60000,
@@ -1833,8 +1889,8 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
               borderBottom: '1px solid #e1e1e1',
               fontWeight: 'bold',
               display: 'grid',
-              gridTemplateColumns: '180px 160px 100px 180px 100px 100px 100px 80px 120px',
-              gap: '15px',
+              gridTemplateColumns: '180px 120px 60px 150px 100px 100px 80px 100px 120px',
+              gap: '12px',
               alignItems: 'center'
             }}>
               <div>상담사명</div>
@@ -1843,83 +1899,71 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
               <div>전문분야</div>
               <div>세션수</div>
               <div>평점</div>
-              <div>단가설정</div>
               <div>상태</div>
+              <div>단가설정</div>
               <div>관리</div>
             </div>
             
             {(() => {
-              const counselorsList = counselors.length > 0 ? counselors : [
-                {
-                  _id: '1',
-                  name: '김상담',
-                  email: 'counselor1@example.com',
-                  phone: '010-1234-5678',
-                  specialties: ['우울증', '불안장애', '스트레스 관리'],
-                  licenseNumber: 'CL-2024-001',
-                  experience: 5,
-                  rates: { faceToFace: 80000, phoneVideo: 60000, chat: 40000 },
-                  maxDailyAppointments: 8,
-                  isActive: true,
-                  totalSessions: 245,
-                  rating: 4.8,
-                  createdAt: new Date().toISOString()
-                },
-                {
-                  _id: '2',
-                  name: '이상담',
-                  email: 'counselor2@example.com',
-                  phone: '010-5678-9012',
-                  specialties: ['가족상담', '인간관계', '직장스트레스'],
-                  licenseNumber: 'CL-2024-002',
-                  experience: 8,
-                  rates: { faceToFace: 100000, phoneVideo: 80000, chat: 50000 },
-                  maxDailyAppointments: 6,
-                  isActive: true,
-                  totalSessions: 412,
-                  rating: 4.9,
-                  createdAt: new Date().toISOString()
-                }
-              ];
+              console.log('렌더링 중 counselors 상태:', counselors);
+              console.log('counselors.length:', counselors.length);
+              
+              // 실제 데이터가 있으면 사용, 없으면 빈 상태 표시
+              const counselorsList = counselors;
+              
+              if (counselorsList.length === 0) {
+                return (
+                  <div style={{
+                    textAlign: 'center',
+                    padding: '60px 20px',
+                    color: '#9ca3af'
+                  }}>
+                    <div style={{ fontSize: '48px', marginBottom: '16px' }}>👥</div>
+                    <h3 style={{ color: '#6b7280', marginBottom: '8px' }}>등록된 상담사가 없습니다</h3>
+                    <p>새 상담사를 등록해보세요!</p>
+                  </div>
+                );
+              }
+              
               return counselorsList.map((counselor, index) => (
               <div key={counselor._id} style={{
                 padding: '20px',
                 borderBottom: index < counselorsList.length - 1 ? '1px solid #f0f0f0' : 'none',
                 display: 'grid',
-                gridTemplateColumns: '180px 160px 100px 180px 100px 100px 100px 80px 120px',
-                gap: '15px',
+                gridTemplateColumns: '180px 120px 60px 150px 100px 100px 80px 100px 120px',
+                gap: '12px',
                 alignItems: 'center'
               }}>
                 <div>
-                  <div style={{ fontWeight: 'bold' }}>{counselor.name}</div>
+                  <div style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    {counselor.name}
+                    <span style={{
+                      background: counselor.role === 'financial-advisor' 
+                        ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' 
+                        : 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
+                      color: 'white',
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      fontSize: '10px',
+                      fontWeight: '600'
+                    }}>
+                      {counselor.role === 'financial-advisor' ? '재무상담사' : '심리상담사'}
+                    </span>
+                  </div>
                   <div style={{ fontSize: '12px', color: '#666' }}>{counselor.email}</div>
                   <div style={{ fontSize: '12px', color: '#666' }}>{counselor.licenseNumber}</div>
                 </div>
-                <div style={{ fontSize: '14px' }}>{counselor.phone}</div>
-                <div style={{ fontSize: '14px' }}>{counselor.experience}년</div>
+                <div style={{ fontSize: '14px' }}>{counselor.phone || '-'}</div>
+                <div style={{ fontSize: '14px' }}>{counselor.experience || 0}년</div>
                 <div style={{ fontSize: '12px', color: '#666' }}>
-                  {(counselor.specialties || []).slice(0, 2).join(', ')}
-                  {(counselor.specialties || []).length > 2 && ' 외'}
+                  {counselor.specialties && counselor.specialties.length > 0 
+                    ? counselor.specialties.slice(0, 2).join(', ') + (counselor.specialties.length > 2 ? ' 외' : '')
+                    : '-'
+                  }
                 </div>
                 <div style={{ fontSize: '14px' }}>{counselor.totalSessions || 0}회</div>
                 <div style={{ fontSize: '14px' }}>
                   ⭐ {(counselor.rating || 0).toFixed(1)}
-                </div>
-                <div>
-                  <button
-                    onClick={() => openRateModal(counselor._id)}
-                    style={{
-                      backgroundColor: '#2196f3',
-                      color: 'white',
-                      border: 'none',
-                      padding: '4px 8px',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      fontSize: '12px'
-                    }}
-                  >
-                    단가설정
-                  </button>
                 </div>
                 <div>
                   <span style={{
@@ -1934,12 +1978,46 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
                 </div>
                 <div>
                   <button
+                    onClick={() => openRateModal(counselor._id)}
+                    style={{
+                      backgroundColor: '#2196f3',
+                      color: 'white',
+                      border: 'none',
+                      padding: '4px 8px',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      marginRight: '4px'
+                    }}
+                  >
+                    단가설정
+                  </button>
+                </div>
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  <button
+                    onClick={() => {
+                      setEditingCounselor(counselor);
+                      setShowEditCounselor(true);
+                    }}
+                    style={{
+                      backgroundColor: '#ff9800',
+                      color: 'white',
+                      border: 'none',
+                      padding: '4px 8px',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '12px'
+                    }}
+                  >
+                    편집
+                  </button>
+                  <button
                     onClick={() => toggleCounselorStatus(counselor._id)}
                     style={{
                       backgroundColor: counselor.isActive ? '#f44336' : '#4caf50',
                       color: 'white',
                       border: 'none',
-                      padding: '6px 12px',
+                      padding: '4px 8px',
                       borderRadius: '4px',
                       cursor: 'pointer',
                       fontSize: '12px'
@@ -1982,13 +2060,63 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
             <h3 style={{ color: '#333', margin: '0 0 20px 0' }}>🧠 새 상담사 등록</h3>
             
             <div style={{ display: 'grid', gap: '15px', marginBottom: '20px' }}>
+              {/* 상담사 유형 선택 */}
+              <div>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>상담사 유형</label>
+                <div style={{ display: 'flex', gap: '15px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                    <input
+                      type="radio"
+                      name="counselorType"
+                      value="counselor"
+                      checked={newCounselor.role === 'counselor'}
+                      onChange={(e) => setNewCounselor(prev => ({ ...prev, role: e.target.value }))}
+                      style={{ marginRight: '8px' }}
+                    />
+                    <span style={{
+                      background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
+                      color: 'white',
+                      padding: '4px 12px',
+                      borderRadius: '12px',
+                      fontSize: '14px',
+                      fontWeight: '600'
+                    }}>
+                      🧠 심리상담사
+                    </span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                    <input
+                      type="radio"
+                      name="counselorType"
+                      value="financial-advisor"
+                      checked={newCounselor.role === 'financial-advisor'}
+                      onChange={(e) => setNewCounselor(prev => ({ ...prev, role: e.target.value }))}
+                      style={{ marginRight: '8px' }}
+                    />
+                    <span style={{
+                      background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                      color: 'white',
+                      padding: '4px 12px',
+                      borderRadius: '12px',
+                      fontSize: '14px',
+                      fontWeight: '600'
+                    }}>
+                      💰 재무상담사
+                    </span>
+                  </label>
+                </div>
+              </div>
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
                 <div>
-                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>이름</label>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
+                    이름 <span style={{ color: 'red' }}>*</span>
+                  </label>
                   <input
                     type="text"
                     value={newCounselor.name}
                     onChange={(e) => setNewCounselor(prev => ({ ...prev, name: e.target.value }))}
+                    placeholder="예: 김상담"
                     style={{ width: '100%', padding: '10px', border: '2px solid #e1e1e1', borderRadius: '4px', boxSizing: 'border-box' }}
                   />
                 </div>
@@ -1998,6 +2126,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
                     type="text"
                     value={newCounselor.licenseNumber}
                     onChange={(e) => setNewCounselor(prev => ({ ...prev, licenseNumber: e.target.value }))}
+                    placeholder={newCounselor.role === 'financial-advisor' ? '예: AFPKorea-2024-001' : '예: 제20240001호'}
                     style={{ width: '100%', padding: '10px', border: '2px solid #e1e1e1', borderRadius: '4px', boxSizing: 'border-box' }}
                   />
                 </div>
@@ -2005,20 +2134,26 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
                 <div>
-                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>이메일</label>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
+                    이메일 <span style={{ color: 'red' }}>*</span>
+                  </label>
                   <input
                     type="email"
                     value={newCounselor.email}
                     onChange={(e) => setNewCounselor(prev => ({ ...prev, email: e.target.value }))}
+                    placeholder="예: counselor@example.com"
                     style={{ width: '100%', padding: '10px', border: '2px solid #e1e1e1', borderRadius: '4px', boxSizing: 'border-box' }}
                   />
                 </div>
                 <div>
-                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>전화번호</label>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
+                    전화번호 <span style={{ color: 'red' }}>*</span>
+                  </label>
                   <input
                     type="tel"
                     value={newCounselor.phone}
                     onChange={(e) => setNewCounselor(prev => ({ ...prev, phone: e.target.value }))}
+                    placeholder="예: 010-1234-5678"
                     style={{ width: '100%', padding: '10px', border: '2px solid #e1e1e1', borderRadius: '4px', boxSizing: 'border-box' }}
                   />
                 </div>
@@ -2026,11 +2161,14 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
                 <div>
-                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>초기 비밀번호</label>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
+                    초기 비밀번호 <span style={{ color: 'red' }}>*</span>
+                  </label>
                   <input
                     type="password"
                     value={newCounselor.password}
                     onChange={(e) => setNewCounselor(prev => ({ ...prev, password: e.target.value }))}
+                    placeholder="최소 6자 이상"
                     style={{ width: '100%', padding: '10px', border: '2px solid #e1e1e1', borderRadius: '4px', boxSizing: 'border-box' }}
                   />
                 </div>
@@ -2040,6 +2178,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
                     type="number"
                     value={newCounselor.experience}
                     onChange={(e) => setNewCounselor(prev => ({ ...prev, experience: parseInt(e.target.value) || 0 }))}
+                    placeholder="예: 5"
                     style={{ width: '100%', padding: '10px', border: '2px solid #e1e1e1', borderRadius: '4px', boxSizing: 'border-box' }}
                   />
                 </div>
@@ -2051,50 +2190,67 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
                   type="text"
                   value={newCounselor.specialties.join(', ')}
                   onChange={(e) => setNewCounselor(prev => ({ ...prev, specialties: e.target.value.split(',').map(s => s.trim()) }))}
-                  placeholder="우울증, 불안장애, 스트레스 관리 (쉽표로 구분)"
+                  placeholder={newCounselor.role === 'financial-advisor' 
+                    ? "재무계획, 투자상담, 은퇴설계, 자산관리 (쉽표로 구분)"
+                    : "우울증, 불안장애, 스트레스 관리, 대인관계 (쉽표로 구분)"
+                  }
                   style={{ width: '100%', padding: '10px', border: '2px solid #e1e1e1', borderRadius: '4px', boxSizing: 'border-box' }}
                 />
               </div>
 
+              {/* 상담센터 선택 */}
               <div>
-                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>상담 단가 설정</label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
-                  <div>
-                    <label style={{ fontSize: '12px', color: '#666' }}>대면 상담</label>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>소속 상담센터</label>
+                <div style={{ marginBottom: '10px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', marginBottom: '8px' }}>
                     <input
-                      type="number"
-                      value={newCounselor.rates.faceToFace}
-                      onChange={(e) => setNewCounselor(prev => ({ 
-                        ...prev, 
-                        rates: { ...prev.rates, faceToFace: parseInt(e.target.value) || 0 }
-                      }))}
-                      style={{ width: '100%', padding: '8px', border: '2px solid #e1e1e1', borderRadius: '4px', boxSizing: 'border-box' }}
+                      type="checkbox"
+                      checked={newCounselor.isIndependent}
+                      onChange={(e) => setNewCounselor(prev => ({ ...prev, isIndependent: e.target.checked }))}
+                      style={{ marginRight: '8px' }}
                     />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '12px', color: '#666' }}>전화/화상</label>
-                    <input
-                      type="number"
-                      value={newCounselor.rates.phoneVideo}
-                      onChange={(e) => setNewCounselor(prev => ({ 
-                        ...prev, 
-                        rates: { ...prev.rates, phoneVideo: parseInt(e.target.value) || 0 }
-                      }))}
-                      style={{ width: '100%', padding: '8px', border: '2px solid #e1e1e1', borderRadius: '4px', boxSizing: 'border-box' }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '12px', color: '#666' }}>채팅 상담</label>
-                    <input
-                      type="number"
-                      value={newCounselor.rates.chat}
-                      onChange={(e) => setNewCounselor(prev => ({ 
-                        ...prev, 
-                        rates: { ...prev.rates, chat: parseInt(e.target.value) || 0 }
-                      }))}
-                      style={{ width: '100%', padding: '8px', border: '2px solid #e1e1e1', borderRadius: '4px', boxSizing: 'border-box' }}
-                    />
-                  </div>
+                    <span style={{ fontSize: '14px', color: '#666' }}>개인 자격으로 활동 (상담센터 소속 없음)</span>
+                  </label>
+                </div>
+                {!newCounselor.isIndependent && (
+                  <select
+                    value={newCounselor.counselingCenterId || ''}
+                    onChange={(e) => setNewCounselor(prev => ({ ...prev, counselingCenterId: e.target.value }))}
+                    style={{ width: '100%', padding: '10px', border: '2px solid #e1e1e1', borderRadius: '4px', boxSizing: 'border-box' }}
+                  >
+                    <option value="">상담센터를 선택해주세요</option>
+                    {counselingCenters.map(center => (
+                      <option key={center._id} value={center._id}>{center.name}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              {/* 상담 단가 */}
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '15px' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
+                    상담 단가 <span style={{ color: 'red' }}>*</span>
+                  </label>
+                  <input
+                    type="number"
+                    value={newCounselor.customRate}
+                    onChange={(e) => setNewCounselor(prev => ({ ...prev, customRate: parseInt(e.target.value) || 0 }))}
+                    placeholder={newCounselor.role === 'financial-advisor' ? '예: 120000 (재무상담 60분 기준)' : '예: 80000 (심리상담 50분 기준)'}
+                    style={{ width: '100%', padding: '10px', border: '2px solid #e1e1e1', borderRadius: '4px', boxSizing: 'border-box' }}
+                  />
+                  <small style={{ color: '#666', fontSize: '12px' }}>원/세션</small>
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>세금률</label>
+                  <select
+                    value={newCounselor.taxRate}
+                    onChange={(e) => setNewCounselor(prev => ({ ...prev, taxRate: parseFloat(e.target.value) }))}
+                    style={{ width: '100%', padding: '10px', border: '2px solid #e1e1e1', borderRadius: '4px', boxSizing: 'border-box' }}
+                  >
+                    <option value={3.3}>3.3% (사업소득세)</option>
+                    <option value={10}>10% (기타소득세)</option>
+                  </select>
                 </div>
               </div>
 
@@ -2104,6 +2260,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
                   type="number"
                   value={newCounselor.maxDailyAppointments}
                   onChange={(e) => setNewCounselor(prev => ({ ...prev, maxDailyAppointments: parseInt(e.target.value) || 8 }))}
+                  placeholder="예: 8 (하루 최대 8회 상담)"
                   style={{ width: '100%', padding: '10px', border: '2px solid #e1e1e1', borderRadius: '4px', boxSizing: 'border-box' }}
                 />
               </div>
@@ -2125,18 +2282,271 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
               </button>
               <button
                 onClick={handleCreateCounselor}
-                disabled={!newCounselor.name || !newCounselor.email || !newCounselor.licenseNumber}
+                disabled={!newCounselor.name || !newCounselor.email || !newCounselor.phone || !newCounselor.password || !newCounselor.customRate}
                 style={{
-                  backgroundColor: !newCounselor.name || !newCounselor.email || !newCounselor.licenseNumber ? '#ccc' : '#9c27b0',
+                  backgroundColor: !newCounselor.name || !newCounselor.email || !newCounselor.phone || !newCounselor.password || !newCounselor.customRate ? '#ccc' : '#9c27b0',
                   color: 'white',
                   border: 'none',
                   padding: '12px 20px',
                   borderRadius: '6px',
-                  cursor: !newCounselor.name || !newCounselor.email || !newCounselor.licenseNumber ? 'not-allowed' : 'pointer',
+                  cursor: !newCounselor.name || !newCounselor.email || !newCounselor.phone || !newCounselor.password || !newCounselor.customRate ? 'not-allowed' : 'pointer',
                   fontWeight: 'bold'
                 }}
               >
-                🧠 상담사 등록
+                {newCounselor.role === 'financial-advisor' ? '💰 재무상담사 등록' : '🧠 심리상담사 등록'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 상담사 편집 모달 */}
+      {showEditCounselor && editingCounselor && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '12px',
+            padding: '20px',
+            maxWidth: '600px',
+            width: '90%',
+            maxHeight: '80vh',
+            overflow: 'auto',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
+          }}>
+            <h3 style={{ color: '#333', margin: '0 0 20px 0' }}>
+              {editingCounselor.role === 'financial-advisor' ? '💰' : '🧠'} 상담사 정보 편집
+            </h3>
+            
+            <div style={{ display: 'grid', gap: '15px', marginBottom: '20px' }}>
+              {/* 상담사 유형 선택 */}
+              <div>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>상담사 유형</label>
+                <div style={{ display: 'flex', gap: '15px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                    <input
+                      type="radio"
+                      name="editCounselorType"
+                      value="counselor"
+                      checked={editingCounselor.role === 'counselor'}
+                      onChange={(e) => setEditingCounselor({...editingCounselor, role: e.target.value})}
+                      style={{ marginRight: '8px' }}
+                    />
+                    <span style={{
+                      background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
+                      color: 'white',
+                      padding: '4px 12px',
+                      borderRadius: '12px',
+                      fontSize: '14px',
+                      fontWeight: '600'
+                    }}>
+                      🧠 심리상담사
+                    </span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                    <input
+                      type="radio"
+                      name="editCounselorType"
+                      value="financial-advisor"
+                      checked={editingCounselor.role === 'financial-advisor'}
+                      onChange={(e) => setEditingCounselor({...editingCounselor, role: e.target.value})}
+                      style={{ marginRight: '8px' }}
+                    />
+                    <span style={{
+                      background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                      color: 'white',
+                      padding: '4px 12px',
+                      borderRadius: '12px',
+                      fontSize: '14px',
+                      fontWeight: '600'
+                    }}>
+                      💰 재무상담사
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>이름</label>
+                  <input
+                    type="text"
+                    value={editingCounselor.name}
+                    onChange={(e) => setEditingCounselor({...editingCounselor, name: e.target.value})}
+                    style={{ width: '100%', padding: '10px', border: '2px solid #e1e1e1', borderRadius: '4px', boxSizing: 'border-box' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>이메일</label>
+                  <input
+                    type="email"
+                    value={editingCounselor.email}
+                    onChange={(e) => setEditingCounselor({...editingCounselor, email: e.target.value})}
+                    style={{ width: '100%', padding: '10px', border: '2px solid #e1e1e1', borderRadius: '4px', boxSizing: 'border-box' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>전화번호</label>
+                  <input
+                    type="tel"
+                    value={editingCounselor.phone}
+                    onChange={(e) => setEditingCounselor({...editingCounselor, phone: e.target.value})}
+                    style={{ width: '100%', padding: '10px', border: '2px solid #e1e1e1', borderRadius: '4px', boxSizing: 'border-box' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>경력 (년)</label>
+                  <input
+                    type="number"
+                    value={editingCounselor.experience || 0}
+                    onChange={(e) => setEditingCounselor({...editingCounselor, experience: parseInt(e.target.value) || 0})}
+                    style={{ width: '100%', padding: '10px', border: '2px solid #e1e1e1', borderRadius: '4px', boxSizing: 'border-box' }}
+                  />
+                </div>
+              </div>
+
+              {/* 상담센터 선택 */}
+              <div>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>소속 상담센터</label>
+                <div style={{ marginBottom: '10px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', marginBottom: '8px' }}>
+                    <input
+                      type="checkbox"
+                      checked={editingCounselor.isIndependent}
+                      onChange={(e) => setEditingCounselor({...editingCounselor, isIndependent: e.target.checked})}
+                      style={{ marginRight: '8px' }}
+                    />
+                    <span style={{ fontSize: '14px', color: '#666' }}>개인 자격으로 활동 (상담센터 소속 없음)</span>
+                  </label>
+                </div>
+                {!editingCounselor.isIndependent && (
+                  <select
+                    value={editingCounselor.counselingCenter?._id || editingCounselor.counselingCenterId || ''}
+                    onChange={(e) => setEditingCounselor({...editingCounselor, counselingCenterId: e.target.value})}
+                    style={{ width: '100%', padding: '10px', border: '2px solid #e1e1e1', borderRadius: '4px', boxSizing: 'border-box' }}
+                  >
+                    <option value="">상담센터를 선택해주세요</option>
+                    {counselingCenters.map(center => (
+                      <option key={center._id} value={center._id}>{center.name}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>전문 분야</label>
+                <input
+                  type="text"
+                  value={(editingCounselor.specialties || []).join(', ')}
+                  onChange={(e) => setEditingCounselor({...editingCounselor, specialties: e.target.value.split(',').map(s => s.trim())})}
+                  placeholder={editingCounselor.role === 'financial-advisor' 
+                    ? "재무계획, 투자상담, 은퇴설계, 자산관리 (쉼표로 구분)"
+                    : "우울증, 불안장애, 스트레스 관리, 대인관계 (쉼표로 구분)"
+                  }
+                  style={{ width: '100%', padding: '10px', border: '2px solid #e1e1e1', borderRadius: '4px', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '15px' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>상담 단가</label>
+                  <input
+                    type="number"
+                    value={editingCounselor.customRate || 0}
+                    onChange={(e) => setEditingCounselor({...editingCounselor, customRate: parseInt(e.target.value) || 0})}
+                    style={{ width: '100%', padding: '10px', border: '2px solid #e1e1e1', borderRadius: '4px', boxSizing: 'border-box' }}
+                  />
+                  <small style={{ color: '#666' }}>원/세션</small>
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>세금률</label>
+                  <select
+                    value={editingCounselor.taxRate || 3.3}
+                    onChange={(e) => setEditingCounselor({...editingCounselor, taxRate: parseFloat(e.target.value)})}
+                    style={{ width: '100%', padding: '10px', border: '2px solid #e1e1e1', borderRadius: '4px', boxSizing: 'border-box' }}
+                  >
+                    <option value={3.3}>3.3%</option>
+                    <option value={10}>10%</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                onClick={() => setShowEditCounselor(false)}
+                style={{
+                  backgroundColor: '#f5f5f5',
+                  color: '#333',
+                  border: '1px solid #ddd',
+                  padding: '12px 20px',
+                  borderRadius: '6px',
+                  cursor: 'pointer'
+                }}
+              >
+                취소
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    const token = localStorage.getItem('token');
+                    
+                    const updateData = {
+                      name: editingCounselor.name,
+                      phone: editingCounselor.phone,
+                      experience: editingCounselor.experience,
+                      specialties: editingCounselor.specialties,
+                      customRate: editingCounselor.customRate,
+                      taxRate: editingCounselor.taxRate,
+                      isIndependent: editingCounselor.isIndependent,
+                      counselingCenterId: editingCounselor.isIndependent ? undefined : editingCounselor.counselingCenterId,
+                      role: editingCounselor.role
+                    };
+
+                    console.log('상담사 정보 업데이트 요청:', updateData);
+
+                    const response = await axios.put(`http://localhost:3000/api/counselors/${editingCounselor._id}`, 
+                      updateData,
+                      { headers: { Authorization: `Bearer ${token}` } }
+                    );
+
+                    console.log('업데이트 응답:', response.data);
+
+                    // 목록 새로고침
+                    await fetchSuperAdminData();
+                    
+                    setShowEditCounselor(false);
+                    setEditingCounselor(null);
+                    alert('상담사 정보가 성공적으로 업데이트되었습니다!');
+                  } catch (error) {
+                    console.error('상담사 업데이트 오류:', error);
+                    alert('상담사 정보 업데이트 중 오류가 발생했습니다: ' + (error.response?.data?.message || error.message));
+                  }
+                }}
+                style={{
+                  backgroundColor: '#4caf50',
+                  color: 'white',
+                  border: 'none',
+                  padding: '12px 20px',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold'
+                }}
+              >
+                저장
               </button>
             </div>
           </div>

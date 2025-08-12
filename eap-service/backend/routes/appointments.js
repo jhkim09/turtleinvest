@@ -30,18 +30,26 @@ router.get('/', auth, async (req, res) => {
 router.post('/', [auth, authorize('employee', 'admin')], [
   body('counselorId').isMongoId(),
   body('scheduledDate').isISO8601(),
-  body('reason').trim().isLength({ min: 10 })
+  body('reason').trim().isLength({ min: 2, max: 200 }).withMessage('상담 사유는 2자 이상 200자 이하로 입력해주세요.')
 ], async (req, res) => {
   try {
+    console.log('=== 심리상담 예약 요청 ===');
+    console.log('사용자:', req.user.name, '(', req.user.email, ')');
+    console.log('요청 데이터:', req.body);
+    
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      console.log('Validation 오류:', errors.array());
       return res.status(400).json({ errors: errors.array() });
     }
 
     const { counselorId, scheduledDate, duration, type, reason, notes } = req.body;
 
+    console.log('상담사 조회 중:', counselorId);
     const counselor = await User.findOne({ _id: counselorId, role: 'counselor', isActive: true });
+    console.log('조회된 상담사:', counselor ? counselor.name : '없음');
     if (!counselor) {
+      console.log('상담사를 찾을 수 없음');
       return res.status(400).json({ message: '유효하지 않은 상담사입니다.' });
     }
 
@@ -65,11 +73,16 @@ router.post('/', [auth, authorize('employee', 'admin')], [
       notes
     });
 
+    console.log('예약 저장 중...');
     await appointment.save();
+    console.log('예약 저장 완료:', appointment._id);
+    
     await appointment.populate('counselor', 'name email');
+    console.log('✅ 예약 생성 성공');
 
     res.status(201).json(appointment);
   } catch (error) {
+    console.error('예약 생성 오류:', error);
     res.status(500).json({ message: '서버 오류가 발생했습니다.' });
   }
 });

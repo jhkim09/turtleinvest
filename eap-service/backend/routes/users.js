@@ -8,11 +8,32 @@ const router = express.Router();
 router.get('/counselors', auth, async (req, res) => {
   try {
     const counselors = await User.find({ role: 'counselor', isActive: true })
-      .select('name email')
+      .select('name email specialties experience rating customRate')
       .sort({ name: 1 });
     
     res.json(counselors);
   } catch (error) {
+    res.status(500).json({ message: '서버 오류가 발생했습니다.' });
+  }
+});
+
+// 역할별 사용자 목록 조회 (재무상담사 포함)
+router.get('/', auth, async (req, res) => {
+  try {
+    const { role } = req.query;
+    let query = { isActive: true };
+    
+    if (role) {
+      query.role = role;
+    }
+    
+    const users = await User.find(query)
+      .select('name email role specialties experience rating customRate department')
+      .sort({ name: 1 });
+    
+    res.json(users);
+  } catch (error) {
+    console.error('사용자 목록 조회 오류:', error);
     res.status(500).json({ message: '서버 오류가 발생했습니다.' });
   }
 });

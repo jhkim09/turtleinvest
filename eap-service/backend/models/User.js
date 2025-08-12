@@ -19,7 +19,7 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['employee', 'manager', 'counselor', 'company-admin', 'super-admin'],
+    enum: ['employee', 'manager', 'counselor', 'financial-advisor', 'company-admin', 'super-admin'],
     default: 'employee'
   },
   department: {
@@ -43,34 +43,67 @@ const userSchema = new mongoose.Schema({
       return ['company-admin', 'employee', 'manager'].includes(this.role); 
     }
   },
-  // 상담사 전용 필드들
+  // 상담사 전용 필드들 (심리상담사 + 재무상담사)
   customRate: {
     type: Number,
     min: 0,
-    required: function() { return this.role === 'counselor'; }
+    required: function() { return ['counselor', 'financial-advisor'].includes(this.role); }
   },
   useSystemRate: {
     type: Boolean,
     default: true,
-    required: function() { return this.role === 'counselor'; }
+    required: function() { return ['counselor', 'financial-advisor'].includes(this.role); }
   },
   // 상담사 세금 설정
   taxRate: {
     type: Number,
     enum: [3.3, 10],
     default: 3.3,
-    required: function() { return this.role === 'counselor'; }
+    required: function() { return ['counselor', 'financial-advisor'].includes(this.role); }
   },
   // 상담센터 관련 필드들
   counselingCenter: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'CounselingCenter',
-    required: function() { return this.role === 'counselor' && !this.isIndependent; }
+    required: function() { return ['counselor', 'financial-advisor'].includes(this.role) && !this.isIndependent; }
   },
   isIndependent: {
     type: Boolean,
-    default: function() { return this.role === 'counselor'; },
-    required: function() { return this.role === 'counselor'; }
+    default: function() { return ['counselor', 'financial-advisor'].includes(this.role); },
+    required: function() { return ['counselor', 'financial-advisor'].includes(this.role); }
+  },
+  // 상담사 추가 정보 필드들
+  phone: {
+    type: String,
+    required: function() { return ['counselor', 'financial-advisor'].includes(this.role); }
+  },
+  experience: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  specialties: [{
+    type: String
+  }],
+  licenseNumber: {
+    type: String
+  },
+  // 상담사 평가 관련 필드들
+  totalSessions: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  rating: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 5
+  },
+  totalRatings: {
+    type: Number,
+    default: 0,
+    min: 0
   },
   // 직원 연간 상담 사용량 추적
   annualCounselingUsage: {
