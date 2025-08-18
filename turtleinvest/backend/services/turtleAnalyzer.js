@@ -261,9 +261,9 @@ class TurtleAnalyzer {
     return 'weak';
   }
   
-  // 추천 액션 계산 (100만원 투자 기준)
+  // 추천 액션 계산 (사용자 설정 투자 기준)
   static calculateRecommendedAction(action, signal, indicators) {
-    const totalInvestment = 1000000; // 100만원 고정 투자금
+    const totalInvestment = global.investmentBudget || 1000000; // 기본값: 100만원
     
     if (action === 'BUY') {
       const currentPrice = signal.currentPrice;

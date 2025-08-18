@@ -92,7 +92,7 @@ router.get('/risk', async (req, res) => {
 // Make.com 통합 분석 API (터틀 + 슈퍼스톡스)
 router.post('/make-analysis', async (req, res) => {
   try {
-    const { apiKey, symbols } = req.body;
+    const { apiKey, symbols, investmentBudget } = req.body;
     
     // API 키 검증
     const validApiKey = process.env.MAKE_API_KEY || 'turtle_make_api_2024';
@@ -104,10 +104,13 @@ router.post('/make-analysis', async (req, res) => {
       });
     }
     
-    console.log('🔍 Make.com에서 통합 분석 요청 (터틀 + 슈퍼스톡스)');
+    // 투자 예산 설정 (기본값: 100만원)
+    const budget = investmentBudget || 1000000;
+    console.log(`🔍 Make.com에서 통합 분석 요청 (터틀 + 슈퍼스톡스) | 투자예산: ${(budget/10000).toFixed(0)}만원`);
     
     // 터틀 분석 로그 초기화
     global.turtleAnalysisLogs = [];
+    global.investmentBudget = budget; // 전역 변수로 예산 설정
     
     // 터틀 분석
     const turtleSignals = await TurtleAnalyzer.analyzeMarket();
@@ -222,6 +225,12 @@ router.post('/make-analysis', async (req, res) => {
         }))
       },
       premiumOpportunities: overlappingStocks,
+      investmentSettings: {
+        budget: budget,                    // 사용된 투자 예산
+        budgetDisplay: `${(budget/10000).toFixed(0)}만원`,
+        riskPerTrade: budget * 0.02,      // 종목당 리스크 (2%)
+        riskDisplay: `${(budget * 0.02 / 10000).toFixed(0)}만원`
+      },
       metadata: {
         requestedBy: 'make.com',
         analysisType: 'integrated_turtle_superstocks',
