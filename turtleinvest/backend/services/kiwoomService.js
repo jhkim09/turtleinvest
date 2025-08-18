@@ -273,21 +273,35 @@ class KiwoomService {
     return Math.round(basePrice * (1 + randomChange));
   }
   
-  // 시뮬레이션 일봉 데이터
+  // 시뮬레이션 일봉 데이터 (터틀 신호 발생 가능하도록 개선)
   getSimulationDailyData(symbol, days) {
     const currentPrice = this.getSimulationPrice(symbol);
     const data = [];
     
+    // 터틀 신호 생성을 위한 패턴 (30% 확률로 돌파 패턴 생성)
+    const generateBreakout = Math.random() < 0.3;
+    const breakoutDay = Math.floor(days * 0.7); // 70% 지점에서 돌파
+    
     for (let i = 0; i < days; i++) {
       const date = new Date();
-      date.setDate(date.getDate() - i);
+      date.setDate(date.getDate() - (days - 1 - i)); // 오래된 날짜부터
       
-      // 추세를 반영한 가격 생성
-      const trendFactor = 1 + (Math.random() - 0.5) * 0.03; // ±1.5%
-      const dayPrice = Math.round(currentPrice * trendFactor * (1 - i * 0.001));
+      let dayPrice;
       
-      const high = dayPrice + Math.round(dayPrice * 0.02); // +2%
-      const low = dayPrice - Math.round(dayPrice * 0.02);  // -2%
+      if (generateBreakout && i >= breakoutDay) {
+        // 돌파 패턴: 최근 20일 최고가 돌파
+        const basePrice = currentPrice * 0.85; // 기준 가격
+        const breakoutBoost = 1 + (i - breakoutDay) * 0.02; // 점진적 상승
+        dayPrice = Math.round(basePrice * breakoutBoost);
+      } else {
+        // 일반적인 횡보/하락 패턴
+        const trendFactor = 1 + (Math.random() - 0.6) * 0.02; // 약간 하락 편향
+        dayPrice = Math.round(currentPrice * trendFactor * (0.95 + i * 0.001));
+      }
+      
+      const volatility = 0.015 + Math.random() * 0.015; // 1.5-3% 변동성
+      const high = Math.round(dayPrice * (1 + volatility));
+      const low = Math.round(dayPrice * (1 - volatility));
       const open = low + Math.round((high - low) * Math.random());
       
       data.push({
@@ -296,11 +310,16 @@ class KiwoomService {
         high: high,
         low: low,
         close: dayPrice,
-        volume: Math.round(1000000 + Math.random() * 5000000)
+        volume: Math.round(500000 + Math.random() * 3000000)
       });
     }
     
-    return data.reverse(); // 오래된 순으로 정렬
+    // 최신 가격을 현재가에 맞춤
+    if (data.length > 0) {
+      data[data.length - 1].close = currentPrice;
+    }
+    
+    return data; // 이미 시간순 정렬됨
   }
   
   // 실제 키움 API 호출 함수 (나중에 구현)
