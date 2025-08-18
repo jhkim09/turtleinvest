@@ -36,8 +36,8 @@ class TurtleAnalyzer {
   // 개별 종목 분석
   static async analyzeStock(symbol, name) {
     try {
-      // 1. 38일 일봉 데이터 + 52주 신고가/신저가 조회
-      const priceData = await this.getPriceData(symbol, 38);
+      // 1. 25일 일봉 데이터 + 52주 신고가/신저가 조회  
+      const priceData = await this.getPriceData(symbol, 25);
       const YahooFinanceService = require('./yahooFinanceService');
       const highLowData = await YahooFinanceService.get52WeekHighLow(symbol);
       

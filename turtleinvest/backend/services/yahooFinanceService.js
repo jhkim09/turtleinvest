@@ -35,7 +35,7 @@ class YahooFinanceService {
       
       const response = await axios.get(url, {
         params: {
-          range: '3mo', // 3개월 데이터 (약 90일)
+          range: '1mo', // 1개월 데이터 (약 30일, 20일 분석용)
           interval: '1d',
           includePrePost: false,
           events: 'div,splits'
