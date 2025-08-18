@@ -69,17 +69,18 @@ class SuperstocksAnalyzer {
       // 1. 현재가 조회 (키움 API)
       const currentPrice = await KiwoomService.getCurrentPrice(symbol);
       
-      // 2. 임시로 시뮬레이션 데이터 사용 (DART API 문제 해결 전까지)
-      const simData = this.generateSimulationFinancials(symbol);
-      const financialData = {
-        stockCode: null, // 시뮬레이션 표시
-        revenue: simData.revenue,
-        netIncome: simData.netIncome,
-        revenueGrowth3Y: this.calculateGrowthRate(simData.revenueHistory),
-        netIncomeGrowth3Y: this.calculateGrowthRate(simData.netIncomeHistory),
-        revenueHistory: simData.revenueHistory,
-        netIncomeHistory: simData.netIncomeHistory
-      };
+      // 2. DART API로 실제 재무데이터 조회
+      let financialData;
+      try {
+        financialData = await DartService.analyzeStockFinancials(symbol);
+        if (!financialData || !financialData.stockCode) {
+          console.log(`⚠️ ${symbol} DART 데이터 없음, 건너뛰기`);
+          return null; // 실제 데이터가 없으면 null 반환
+        }
+      } catch (error) {
+        console.log(`⚠️ ${symbol} DART API 호출 실패: ${error.message}, 건너뛰기`);
+        return null; // DART API 실패시 null 반환
+      }
       
       // 4. PSR 계산 (시가총액 / 매출액)
       const estimatedShares = this.estimateSharesOutstanding(symbol, currentPrice, financialData.revenue);
@@ -98,7 +99,7 @@ class SuperstocksAnalyzer {
       // 5. 결과 반환
       return {
         symbol: symbol,
-        name: this.getStockName(symbol),
+        name: financialData.name || this.getStockName(symbol),
         currentPrice: currentPrice,
         revenueGrowth3Y: financialData.revenueGrowth3Y,
         netIncomeGrowth3Y: financialData.netIncomeGrowth3Y,
@@ -242,7 +243,7 @@ class SuperstocksAnalyzer {
       // 추가 매핑 - 누락된 종목들
       '067310': '하나마이크론', '053610': '프로텍', '950160': '삼성전자우',
       '034590': '인천도시가스', '020000': '한섬', '005300': '롯데칠성',
-      '000500': '가온전선', '900310': '테스트종목310', '086890': '이수화학',
+      '000500': '가온전선', '032350': '롯데관광개발', '900310': '테스트종목310', '086890': '이수화학',
       '086790': '하나금융지주', '086960': '메디포스트', '035760': 'CJ E&M',
       '079170': '신풍제약', '028050': '삼성엔지니어링', '079430': '현대리바트',
       '131390': '한국선재', '064960': 'SNT모티브', '192820': '코스맥스',
