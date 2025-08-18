@@ -28,16 +28,19 @@ class SuperstocksAnalyzer {
         }
       }
       
-      // 조건 만족하는 종목만 필터링
-      const qualifiedStocks = results.filter(stock => 
+      // 모든 분석 결과 반환 (조건 만족 여부와 관계없이)
+      const validResults = results.filter(stock => stock !== null);
+      
+      // 조건 만족하는 종목 카운트
+      const qualifiedStocks = validResults.filter(stock => 
         stock.revenueGrowth3Y >= this.minRevenueGrowth &&
         stock.netIncomeGrowth3Y >= this.minNetIncomeGrowth &&
         stock.psr <= this.maxPSR
       );
       
-      console.log(`✅ 슈퍼스톡스 분석 완료: ${qualifiedStocks.length}개 발견`);
+      console.log(`✅ 슈퍼스톡스 분석 완료: 총 ${validResults.length}개 분석, ${qualifiedStocks.length}개 조건 만족`);
       
-      return qualifiedStocks;
+      return validResults; // 모든 분석 결과 반환
       
     } catch (error) {
       console.error('슈퍼스톡스 분석 실패:', error);
