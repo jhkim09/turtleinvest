@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Signal = require('../models/Signal');
 const TurtleAnalyzer = require('../services/turtleAnalyzer');
+const SuperstocksAnalyzer = require('../services/superstocksAnalyzer');
 
 // 최신 신호 조회
 router.get('/latest', async (req, res) => {
@@ -145,6 +146,148 @@ router.post('/make-analysis', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'ANALYSIS_FAILED',
+      message: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// 슈퍼스톡스 분석 API (Make.com용)
+router.post('/superstocks-analysis', async (req, res) => {
+  try {
+    const { apiKey, symbols } = req.body;
+    
+    // API 키 검증
+    const validApiKey = process.env.MAKE_API_KEY || 'turtle_make_api_2024';
+    if (!apiKey || apiKey !== validApiKey) {
+      return res.status(401).json({
+        success: false,
+        error: 'UNAUTHORIZED',
+        message: 'Invalid API key'
+      });
+    }
+    
+    console.log('📈 Make.com에서 슈퍼스톡스 분석 요청');
+    
+    // 분석할 종목 리스트 (제공되지 않으면 기본 리스트 사용)
+    const stockList = symbols || SuperstocksAnalyzer.getDefaultStockList();
+    
+    // 슈퍼스톡스 분석 실행
+    const superstocks = await SuperstocksAnalyzer.analyzeSuperstocks(stockList);
+    
+    // Make.com 친화적 포맷으로 응답
+    const result = {
+      success: true,
+      timestamp: new Date().toISOString(),
+      analysis: {
+        totalAnalyzed: stockList.length,
+        qualifiedStocks: superstocks.length,
+        excellentStocks: superstocks.filter(s => s.score === 'EXCELLENT').length,
+        goodStocks: superstocks.filter(s => s.score === 'GOOD').length
+      },
+      superstocks: superstocks.map(stock => ({
+        symbol: stock.symbol,
+        name: stock.name,
+        currentPrice: stock.currentPrice,
+        revenueGrowth3Y: stock.revenueGrowth3Y,
+        netIncomeGrowth3Y: stock.netIncomeGrowth3Y,
+        psr: stock.psr,
+        score: stock.score,
+        meetsAllConditions: stock.meetsConditions,
+        marketCap: stock.marketCap,
+        timestamp: stock.timestamp
+      })),
+      criteria: {
+        minRevenueGrowth: 15,
+        minNetIncomeGrowth: 15,
+        maxPSR: 0.75,
+        analysisYears: 3
+      },
+      metadata: {
+        requestedBy: 'make.com',
+        analysisType: 'superstocks',
+        market: 'KRX',
+        apiVersion: '1.0'
+      }
+    };
+    
+    res.json(result);
+    
+  } catch (error) {
+    console.error('슈퍼스톡스 분석 실패:', error);
+    res.status(500).json({
+      success: false,
+      error: 'SUPERSTOCKS_ANALYSIS_FAILED',
+      message: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// 통합 분석 API (터틀 + 슈퍼스톡스)
+router.post('/combined-analysis', async (req, res) => {
+  try {
+    const { apiKey, symbols } = req.body;
+    
+    // API 키 검증
+    const validApiKey = process.env.MAKE_API_KEY || 'turtle_make_api_2024';
+    if (!apiKey || apiKey !== validApiKey) {
+      return res.status(401).json({
+        success: false,
+        error: 'UNAUTHORIZED',
+        message: 'Invalid API key'
+      });
+    }
+    
+    console.log('🔍 Make.com에서 통합 분석 요청 (터틀 + 슈퍼스톡스)');
+    
+    // 터틀 분석
+    const turtleSignals = await TurtleAnalyzer.analyzeMarket();
+    
+    // 슈퍼스톡스 분석
+    const stockList = symbols || SuperstocksAnalyzer.getDefaultStockList();
+    const superstocks = await SuperstocksAnalyzer.analyzeSuperstocks(stockList);
+    
+    // 두 조건 모두 만족하는 주식 찾기
+    const combinedOpportunities = [];
+    
+    turtleSignals.forEach(turtle => {
+      const superstock = superstocks.find(s => s.symbol === turtle.symbol);
+      if (superstock && superstock.meetsConditions) {
+        combinedOpportunities.push({
+          ...turtle,
+          superstocksData: superstock,
+          combinedScore: 'PREMIUM' // 두 조건 모두 만족
+        });
+      }
+    });
+    
+    const result = {
+      success: true,
+      timestamp: new Date().toISOString(),
+      analysis: {
+        turtleSignals: turtleSignals.length,
+        qualifiedSuperstocks: superstocks.length,
+        combinedOpportunities: combinedOpportunities.length
+      },
+      turtleSignals: turtleSignals,
+      superstocks: superstocks,
+      combinedOpportunities: combinedOpportunities,
+      metadata: {
+        requestedBy: 'make.com',
+        analysisType: 'combined_turtle_superstocks',
+        market: 'KRX',
+        apiVersion: '1.0'
+      }
+    };
+    
+    res.json(result);
+    
+  } catch (error) {
+    console.error('통합 분석 실패:', error);
+    res.status(500).json({
+      success: false,
+      error: 'COMBINED_ANALYSIS_FAILED',
       message: error.message,
       timestamp: new Date().toISOString()
     });
