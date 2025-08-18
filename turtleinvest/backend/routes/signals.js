@@ -510,6 +510,112 @@ router.get('/test-yahoo', async (req, res) => {
   }
 });
 
+// 매도 신호 분석 API (보유 종목 대상)
+router.post('/sell-analysis', async (req, res) => {
+  try {
+    const { apiKey } = req.body;
+    
+    // API 키 검증
+    const validApiKey = process.env.MAKE_API_KEY || 'turtle_make_api_2024';
+    if (!apiKey || apiKey !== validApiKey) {
+      return res.status(401).json({
+        success: false,
+        error: 'UNAUTHORIZED',
+        message: 'Invalid API key'
+      });
+    }
+    
+    console.log('🔍 Make.com에서 매도 신호 분석 요청');
+    
+    // 1. 키움 API에서 보유 종목 조회
+    const KiwoomService = require('../services/kiwoomService');
+    const accountData = await KiwoomService.getAccountBalance();
+    
+    if (!accountData || !accountData.positions || accountData.positions.length === 0) {
+      return res.json({
+        success: true,
+        message: '보유 종목이 없습니다',
+        sellSignals: [],
+        positions: [],
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    // 2. 보유 종목 각각에 대해 매도 신호 분석
+    const sellSignals = [];
+    const positionAnalysis = [];
+    
+    for (const position of accountData.positions) {
+      try {
+        console.log(`📊 매도 신호 분석: ${position.symbol} (${position.name})`);
+        
+        // 터틀 분석으로 매도 신호 확인
+        const signal = await TurtleAnalyzer.analyzeStock(position.symbol, position.name);
+        
+        if (signal) {
+          // 매도 조건 확인
+          const sellConditions = TurtleAnalyzer.checkSellConditions(signal, position);
+          
+          if (sellConditions.shouldSell) {
+            sellSignals.push({
+              ...signal,
+              position: position,
+              sellReason: sellConditions.reason,
+              urgency: sellConditions.urgency
+            });
+          }
+          
+          positionAnalysis.push({
+            symbol: position.symbol,
+            name: position.name,
+            quantity: position.quantity,
+            avgPrice: position.avgPrice,
+            currentPrice: position.currentPrice,
+            unrealizedPL: position.unrealizedPL,
+            sellConditions: sellConditions
+          });
+        }
+        
+      } catch (error) {
+        console.error(`${position.symbol} 매도 분석 실패:`, error);
+      }
+    }
+    
+    res.json({
+      success: true,
+      timestamp: new Date().toISOString(),
+      sellAnalysis: {
+        totalPositions: accountData.positions.length,
+        sellSignals: sellSignals.length,
+        urgentSells: sellSignals.filter(s => s.urgency === 'HIGH').length,
+        stopLossSells: sellSignals.filter(s => s.sellReason.includes('손절')).length
+      },
+      sellSignals: sellSignals,
+      positionAnalysis: positionAnalysis,
+      accountSummary: {
+        totalAsset: accountData.totalAsset,
+        cash: accountData.cash,
+        positionCount: accountData.positions.length
+      },
+      metadata: {
+        requestedBy: 'make.com',
+        analysisType: 'sell_signals',
+        market: 'KRX',
+        apiVersion: '1.0'
+      }
+    });
+    
+  } catch (error) {
+    console.error('매도 신호 분석 실패:', error);
+    res.status(500).json({
+      success: false,
+      error: 'SELL_ANALYSIS_FAILED',
+      message: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // Make.com 웹훅 수신용 엔드포인트
 router.post('/webhook', async (req, res) => {
   try {

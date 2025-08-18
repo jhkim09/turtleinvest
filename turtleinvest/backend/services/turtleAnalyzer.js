@@ -351,4 +351,49 @@ class TurtleAnalyzer {
   }
 }
 
+  // 매도 조건 확인 (보유 종목용)
+  static checkSellConditions(signal, position) {
+    const currentPrice = position.currentPrice;
+    const avgPrice = position.avgPrice;
+    const unrealizedPL = position.unrealizedPL;
+    const unrealizedPLPercent = (unrealizedPL / (avgPrice * position.quantity)) * 100;
+    
+    const indicators = signal.indicators || {};
+    const sellConditions = {
+      shouldSell: false,
+      reason: '',
+      urgency: 'LOW',
+      conditions: {
+        system1_sell: currentPrice < indicators.low10,     // 10일 최저가 하향돌파
+        system2_sell: currentPrice < indicators.low52w,    // 52주 신저가 하향돌파
+        stopLoss: unrealizedPLPercent < -10,               // 10% 손실
+        bigLoss: unrealizedPLPercent < -20                 // 20% 큰 손실
+      }
+    };
+    
+    // 매도 신호 우선순위
+    if (sellConditions.conditions.bigLoss) {
+      sellConditions.shouldSell = true;
+      sellConditions.reason = '큰 손실 손절 (20% 이상)';
+      sellConditions.urgency = 'URGENT';
+    } else if (sellConditions.conditions.system1_sell) {
+      sellConditions.shouldSell = true;
+      sellConditions.reason = '터틀 System 1: 10일 최저가 하향돌파';
+      sellConditions.urgency = 'HIGH';
+    } else if (sellConditions.conditions.system2_sell) {
+      sellConditions.shouldSell = true;
+      sellConditions.reason = '터틀 System 2: 52주 신저가 하향돌파';
+      sellConditions.urgency = 'HIGH';
+    } else if (sellConditions.conditions.stopLoss) {
+      sellConditions.shouldSell = true;
+      sellConditions.reason = '손절 기준 (10% 손실)';
+      sellConditions.urgency = 'MEDIUM';
+    }
+    
+    console.log(`📊 ${position.symbol} 매도 조건: ${sellConditions.shouldSell ? sellConditions.reason : '보유 유지'} (손익: ${unrealizedPLPercent.toFixed(1)}%)`);
+    
+    return sellConditions;
+  }
+}
+
 module.exports = TurtleAnalyzer;
