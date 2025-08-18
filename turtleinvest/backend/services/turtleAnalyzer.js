@@ -250,14 +250,28 @@ class TurtleAnalyzer {
   
   // 관심종목 리스트 가져오기 (임시)
   static async getWatchlist() {
-    // 임시로 주요 종목 반환
-    return [
-      { symbol: '005930', name: '삼성전자' },
-      { symbol: '000660', name: 'SK하이닉스' },
-      { symbol: '035420', name: 'NAVER' },
-      { symbol: '005380', name: '현대차' },
-      { symbol: '012330', name: '현대모비스' }
-    ];
+    // 슈퍼스톡스와 동일한 리스트 사용 (코스피 상위 10 + 코스닥 주요 종목)
+    const SuperstocksAnalyzer = require('./superstocksAnalyzer');
+    const stockList = SuperstocksAnalyzer.getDefaultStockList();
+    
+    return stockList.map(symbol => ({
+      symbol: symbol,
+      name: this.getStockName(symbol)
+    }));
+  }
+  
+  // 종목명 반환
+  static getStockName(symbol) {
+    const names = {
+      '005930': '삼성전자', '000660': 'SK하이닉스', '035420': 'NAVER',
+      '005380': '현대차', '012330': '현대모비스', '000270': '기아',
+      '105560': 'KB금융', '055550': '신한지주', '035720': '카카오',
+      '051910': 'LG화학', '096770': 'SK이노베이션', '003670': '포스코홀딩스',
+      '017670': 'SK텔레콤', '034730': 'SK', '323410': '카카오뱅크',
+      '003550': 'LG', '086790': '하나금융지주', '068270': '셀트리온',
+      '207940': '삼성바이오로직스', '028260': '삼성물산'
+    };
+    return names[symbol] || `종목${symbol}`;
   }
   
   // 가격 데이터 가져오기 (키움 API 연동)
