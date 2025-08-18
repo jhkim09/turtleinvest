@@ -116,61 +116,66 @@ class KiwoomService {
     }
   }
   
-  // 일봉 데이터 조회 (과거 N일)
+  // 일봉 데이터 조회 (실제 데이터 우선, Yahoo Finance 백업)
   async getDailyData(symbol, days = 55) {
     try {
-      if (!this.isConnected) {
-        return this.getSimulationDailyData(symbol, days);
+      // 1. Yahoo Finance에서 실제 일봉 데이터 시도
+      const YahooFinanceService = require('./yahooFinanceService');
+      const yahooData = await YahooFinanceService.getDailyChartData(symbol, days);
+      
+      if (yahooData && yahooData.length > 0) {
+        console.log(`✅ Yahoo Finance: ${symbol} 실제 일봉 데이터 ${yahooData.length}개 조회`);
+        return yahooData;
       }
       
-      // 실제 키움 API 호출 - 주식일봉차트조회 (ka10081)
-      const url = `${this.useMock ? this.mockURL : this.baseURL}/api/dostk/chart`;
-      
-      // 기준일자 계산 (오늘 날짜)
-      const today = new Date();
-      const baseDate = today.toISOString().slice(0, 10).replace(/-/g, ''); // YYYYMMDD 형식
-      
-      const requestBody = {
-        stk_cd: symbol, // 종목코드
-        base_dt: baseDate, // 기준일자 YYYYMMDD
-        upd_stkpc_tp: '1' // 수정주가구분 0 or 1
-      };
-      
-      const response = await axios.post(url, requestBody, {
-        headers: {
-          'Content-Type': 'application/json;charset=UTF-8',
-          'authorization': `Bearer ${this.accessToken}`,
-          'cont-yn': 'N',
-          'next-key': '',
-          'api-id': 'ka10081'
+      // 2. 키움 API 시도 (연결된 경우)
+      if (this.isConnected) {
+        console.log(`🔄 ${symbol} 키움 API 시도...`);
+        
+        const url = `${this.useMock ? this.mockURL : this.baseURL}/api/dostk/chart`;
+        const today = new Date();
+        const baseDate = today.toISOString().slice(0, 10).replace(/-/g, '');
+        
+        const requestBody = {
+          stk_cd: symbol,
+          base_dt: baseDate,
+          upd_stkpc_tp: '1'
+        };
+        
+        const response = await axios.post(url, requestBody, {
+          headers: {
+            'Content-Type': 'application/json;charset=UTF-8',
+            'authorization': `Bearer ${this.accessToken}`,
+            'cont-yn': 'N',
+            'next-key': '',
+            'api-id': 'ka10081'
+          }
+        });
+        
+        if (response.data && response.data.return_code === 0) {
+          console.log(`✅ 키움 API: ${symbol} 일봉 데이터 조회 성공`);
+          const chartData = response.data.chart_data || [];
+          
+          const dailyData = chartData.slice(0, days).map(item => ({
+            date: item.dt,
+            open: parseInt(item.op_pric || '0'),
+            high: parseInt(item.hg_pric || '0'),
+            low: parseInt(item.lw_pric || '0'),
+            close: parseInt(item.cls_pric || '0'),
+            volume: parseInt(item.tr_vol || '0')
+          }));
+          
+          return dailyData.reverse();
         }
-      });
-      
-      if (response.data && response.data.return_code === 0) {
-        console.log('✅ 일봉 데이터 조회 성공');
-        const chartData = response.data.chart_data || [];
-        
-        const dailyData = chartData.slice(0, days).map(item => ({
-          date: item.dt, // 일자
-          open: parseInt(item.op_pric || '0'),   // 시가
-          high: parseInt(item.hg_pric || '0'),   // 고가  
-          low: parseInt(item.lw_pric || '0'),    // 저가
-          close: parseInt(item.cls_pric || '0'), // 종가
-          volume: parseInt(item.tr_vol || '0')   // 거래량
-        }));
-        
-        return dailyData.reverse(); // 오래된 순으로 정렬
-      } else {
-        console.log('📋 일봉 API 응답:', JSON.stringify(response.data, null, 2));
-        throw new Error(`API 오류: ${response.data?.return_msg || '알 수 없는 오류'}`);
       }
+      
+      // 3. 모든 실제 데이터 실패시에만 시뮬레이션 사용
+      console.log(`⚠️ ${symbol}: 실제 데이터 없음, 시뮬레이션 사용`);
+      return this.getSimulationDailyData(symbol, days);
       
     } catch (error) {
       console.error(`일봉 데이터 조회 실패 (${symbol}):`, error.message);
-      if (error.response) {
-        console.error('📋 에러 응답:', error.response.status, error.response.data);
-      }
-      // 실패시 시뮬레이션 데이터 반환
+      // 최종 백업: 시뮬레이션 데이터
       return this.getSimulationDailyData(symbol, days);
     }
   }

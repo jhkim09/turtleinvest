@@ -476,6 +476,33 @@ router.get('/test-dart', async (req, res) => {
   }
 });
 
+// Yahoo Finance 연결 테스트
+router.get('/test-yahoo', async (req, res) => {
+  try {
+    const YahooFinanceService = require('../services/yahooFinanceService');
+    
+    console.log('🧪 Yahoo Finance 연결 테스트');
+    
+    // 삼성전자로 테스트
+    const testResult = await YahooFinanceService.testConnection('005930');
+    
+    res.json({
+      success: testResult.success,
+      testSymbol: '005930',
+      result: testResult,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('Yahoo Finance 테스트 실패:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // Make.com 웹훅 수신용 엔드포인트
 router.post('/webhook', async (req, res) => {
   try {
