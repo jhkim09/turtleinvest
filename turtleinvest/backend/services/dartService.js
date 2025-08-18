@@ -75,14 +75,14 @@ class DartService {
       // 전체 기업코드 파싱해서 Map으로 저장
       const corpCodeMap = new Map();
       
-      // 다양한 패턴으로 시도
+      // 다양한 패턴으로 시도 (비어있지 않은 stock_code만)
       const patterns = [
-        // 패턴 1: <list><corp_code>...<corp_name>...<stock_code>...</list>
-        /<list>\s*<corp_code>([^<]+)<\/corp_code>\s*<corp_name>([^<]+)<\/corp_name>\s*<stock_code>([^<]*)<\/stock_code>/g,
-        // 패턴 2: 순서가 다른 경우
-        /<list>\s*<stock_code>([^<]*)<\/stock_code>\s*<corp_name>([^<]+)<\/corp_name>\s*<corp_code>([^<]+)<\/corp_code>/g,
-        // 패턴 3: 더 단순한 구조
-        /<corp_code>([^<]+)<\/corp_code>\s*<corp_name>([^<]+)<\/corp_name>\s*<stock_code>([^<]*)<\/stock_code>/g
+        // 패턴 1: stock_code가 6자리 숫자인 경우만
+        /<list>[\s\S]*?<corp_code>([^<]+)<\/corp_code>[\s\S]*?<corp_name>([^<]+)<\/corp_name>[\s\S]*?<stock_code>(\d{6})<\/stock_code>[\s\S]*?<\/list>/g,
+        // 패턴 2: 더 유연한 패턴 (공백 제거)
+        /<list>[\s\S]*?<corp_code>([^<]+)<\/corp_code>[\s\S]*?<corp_name>([^<]+)<\/corp_name>[\s\S]*?<stock_code>\s*(\d+)\s*<\/stock_code>[\s\S]*?<\/list>/g,
+        // 패턴 3: 순서 무관하게 찾기
+        /<corp_code>([^<]+)<\/corp_code>[\s\S]*?<corp_name>([^<]+)<\/corp_name>[\s\S]*?<stock_code>\s*(\d{6})\s*<\/stock_code>/g
       ];
       
       let count = 0;
@@ -95,18 +95,8 @@ class DartService {
         let match;
         let tempCount = 0;
         while ((match = regex.exec(xmlText)) !== null) {
-          let corpCode, corpName, stockCode;
-          
-          if (i === 0) {
-            // 패턴 1: [전체, 기업코드, 회사명, 종목코드]
-            [, corpCode, corpName, stockCode] = match;
-          } else if (i === 1) {
-            // 패턴 2: [전체, 종목코드, 회사명, 기업코드]
-            [, stockCode, corpName, corpCode] = match;
-          } else {
-            // 패턴 3: [전체, 기업코드, 회사명, 종목코드]
-            [, corpCode, corpName, stockCode] = match;
-          }
+          // 모든 패턴: [전체, 기업코드, 회사명, 종목코드]
+          const [, corpCode, corpName, stockCode] = match;
           
           if (stockCode && stockCode.trim()) {
             corpCodeMap.set(stockCode.trim(), {
