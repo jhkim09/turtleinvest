@@ -17,14 +17,28 @@ class DartService {
         return this.cache.get(cacheKey);
       }
       
+      console.log(`🔍 DART API: ${stockCode} 기업코드 조회 중...`);
+      
       const response = await axios.get(`${this.baseURL}/corpCode.xml`, {
         params: {
           crtfc_key: this.apiKey
         }
       });
       
+      if (!response.data) {
+        console.error(`❌ DART API 응답 없음 (${stockCode})`);
+        return null;
+      }
+      
+      // 응답 타입 확인
+      console.log(`📄 DART API 응답 타입: ${typeof response.data}, 길이: ${response.data.length || 'unknown'}`);
+      
       // XML 파싱하여 기업코드 찾기 (간단한 검색)
       const xmlText = response.data;
+      
+      // XML 구조 확인 (처음 1000자만)
+      console.log(`🔍 XML 샘플: ${xmlText.substring(0, 1000)}...`);
+      
       const regex = new RegExp(`<stock_code>${stockCode}</stock_code>\\s*<corp_name>([^<]+)</corp_name>\\s*<corp_code>([^<]+)</corp_code>`, 'i');
       const match = xmlText.match(regex);
       
@@ -33,14 +47,19 @@ class DartService {
           corpCode: match[2].trim(),
           corpName: match[1].trim()
         };
+        console.log(`✅ ${stockCode} → 기업코드: ${result.corpCode}, 회사명: ${result.corpName}`);
         this.cache.set(cacheKey, result);
         return result;
       }
       
+      console.log(`❌ ${stockCode} 기업코드를 XML에서 찾을 수 없음`);
       return null;
       
     } catch (error) {
-      console.error(`기업코드 조회 실패 (${stockCode}):`, error.message);
+      console.error(`❌ 기업코드 조회 실패 (${stockCode}):`, error.message);
+      if (error.response) {
+        console.error(`응답 상태: ${error.response.status}, 데이터: ${error.response.data}`);
+      }
       return null;
     }
   }
