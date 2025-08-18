@@ -150,8 +150,8 @@ router.post('/make-analysis', async (req, res) => {
       },
       turtleTrading: {
         totalSignals: turtleSignals.length,
-        buySignals: turtleSignals.filter(s => s.signalType === 'BUY').length,
-        sellSignals: turtleSignals.filter(s => s.signalType === 'SELL').length,
+        buySignals: turtleSignals.filter(s => s.signalType?.includes('BUY')).length,
+        sellSignals: turtleSignals.filter(s => s.signalType?.includes('SELL')).length,
         signals: turtleSignals.map(signal => ({
           symbol: signal.symbol,
           name: signal.name,
