@@ -356,6 +356,96 @@ router.get('/saved-analysis/:type?', async (req, res) => {
   }
 });
 
+// 단일 종목 테스트 API (디버깅용)
+router.get('/test-stock/:symbol', async (req, res) => {
+  try {
+    const { symbol } = req.params;
+    console.log(`🧪 ${symbol} 단일 종목 테스트 시작`);
+    
+    // 1. 키움 API 연결 상태 확인
+    const kiwoomConnected = require('../services/kiwoomService').isConnectedToKiwoom();
+    
+    // 2. 현재가 조회 테스트
+    let currentPrice = null;
+    let priceError = null;
+    try {
+      currentPrice = await require('../services/kiwoomService').getCurrentPrice(symbol);
+    } catch (error) {
+      priceError = error.message;
+    }
+    
+    // 3. DART API 테스트
+    let dartData = null;
+    let dartError = null;
+    try {
+      dartData = await require('../services/dartService').analyzeStockFinancials(symbol);
+    } catch (error) {
+      dartError = error.message;
+    }
+    
+    // 4. 슈퍼스톡스 분석 테스트
+    let superstockResult = null;
+    let analysisError = null;
+    try {
+      superstockResult = await SuperstocksAnalyzer.analyzeStock(symbol);
+    } catch (error) {
+      analysisError = error.message;
+    }
+    
+    res.json({
+      success: true,
+      symbol: symbol,
+      testResults: {
+        kiwoomConnected: kiwoomConnected,
+        currentPrice: currentPrice,
+        priceError: priceError,
+        dartData: dartData,
+        dartError: dartError,
+        superstockResult: superstockResult,
+        analysisError: analysisError
+      },
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error(`${req.params.symbol} 테스트 실패:`, error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// DART API 연결 테스트
+router.get('/test-dart', async (req, res) => {
+  try {
+    const DartService = require('../services/dartService');
+    
+    console.log('🧪 DART API 연결 테스트');
+    
+    // 삼성전자로 테스트
+    const testResult = await DartService.analyzeStockFinancials('005930');
+    
+    res.json({
+      success: true,
+      dartApiKey: !!process.env.DART_API_KEY,
+      testSymbol: '005930',
+      result: testResult,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('DART API 테스트 실패:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+      dartApiKey: !!process.env.DART_API_KEY,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // Make.com 웹훅 수신용 엔드포인트
 router.post('/webhook', async (req, res) => {
   try {
