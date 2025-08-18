@@ -261,30 +261,62 @@ class TurtleAnalyzer {
     return 'weak';
   }
   
-  // 추천 액션 계산 (리스크 기반)
+  // 추천 액션 계산 (100만원 투자 기준)
   static calculateRecommendedAction(action, signal, indicators) {
-    // 임시 계산 - 실제로는 포트폴리오 정보 필요
-    const defaultEquity = 50000000; // 5천만원 기본값
-    const riskPerTrade = defaultEquity * 0.02; // 2% 리스크
+    const totalInvestment = 1000000; // 100만원 고정 투자금
     
     if (action === 'BUY') {
-      // 2N 손절 기준 주문량 계산
-      const dollarsPerPoint = riskPerTrade / (2 * indicators.atr);
-      const recommendedQuantity = Math.floor(dollarsPerPoint / signal.currentPrice);
-      const stopLossPrice = signal.currentPrice - (2 * indicators.atr);
+      const currentPrice = signal.currentPrice;
+      const atr = indicators.atr;
+      
+      // 터틀 트레이딩 핵심: 2% 리스크 + 2N 스톱로스
+      const maxRisk = totalInvestment * 0.02; // 최대 리스크: 2만원
+      const stopLossDistance = atr * 2; // 2N (2 × ATR)
+      const stopLossPrice = Math.round(currentPrice - stopLossDistance);
+      
+      // 포지션 사이징: 리스크 ÷ 스톱로스 거리
+      const recommendedQuantity = Math.floor(maxRisk / stopLossDistance);
+      const actualInvestment = recommendedQuantity * currentPrice;
+      const actualRisk = recommendedQuantity * stopLossDistance;
+      
+      // 수익/손실 시나리오
+      const profit1N = recommendedQuantity * atr; // 1N 수익시
+      const profit2N = recommendedQuantity * (atr * 2); // 2N 수익시
       
       return {
         action: 'BUY',
-        quantity: recommendedQuantity,
-        riskAmount: riskPerTrade,
-        stopLossPrice: stopLossPrice,
-        reasoning: `20일 고점 돌파, 추천 리스크: ${(riskPerTrade/10000).toFixed(0)}만원`
+        investment: {
+          budget: totalInvestment,           // 총 예산: 100만원
+          actualAmount: actualInvestment,    // 실제 투자금
+          quantity: recommendedQuantity,     // 매수 수량
+          pricePerShare: currentPrice        // 주당 가격
+        },
+        risk: {
+          maxRisk: maxRisk,                  // 최대 리스크: 2만원
+          actualRisk: actualRisk,            // 실제 리스크
+          riskPercent: (actualRisk / actualInvestment * 100).toFixed(2), // 리스크 비율
+          stopLossPrice: stopLossPrice,      // 손절 가격
+          stopLossDistance: Math.round(stopLossDistance) // 손절 거리
+        },
+        technical: {
+          atr: Math.round(atr),              // 평균 진실 범위
+          nValue: Math.round(atr),           // N값
+          breakoutPrice: signal.breakoutPrice, // 돌파 가격
+          volumeRatio: indicators.volumeRatio.toFixed(2) // 거래량 비율
+        },
+        scenarios: {
+          loss2N: -actualRisk,               // 2N 손실 (스톱로스)
+          breakeven: 0,                      // 손익분기점
+          profit1N: profit1N,                // 1N 수익
+          profit2N: profit2N                 // 2N 수익
+        },
+        reasoning: `${signal.signalType} 신호 | 투자 ${(actualInvestment/10000).toFixed(0)}만원 | 수량 ${recommendedQuantity}주 | 손절 ${stopLossPrice.toLocaleString()}원 | 리스크 ${(actualRisk/10000).toFixed(1)}만원`
       };
     } else {
       return {
         action: 'SELL',
-        quantity: 0, // 전량 매도 (실제로는 포지션에서 가져와야 함)
-        reasoning: '10일 저점 하향 돌파, 손절 또는 수익실현'
+        quantity: 0,
+        reasoning: '터틀 매도 신호 발생'
       };
     }
   }
