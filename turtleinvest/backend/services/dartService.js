@@ -48,7 +48,8 @@ class DartService {
       const response = await axios.get(`${this.baseURL}/corpCode.xml`, {
         params: {
           crtfc_key: this.apiKey
-        }
+        },
+        responseType: 'arraybuffer' // XML 파일이 압축되어 있을 수 있음
       });
       
       if (!response.data) {
@@ -56,22 +57,65 @@ class DartService {
         return null;
       }
       
-      // 응답 타입 확인
-      console.log(`📄 DART API 응답 타입: ${typeof response.data}, 길이: ${response.data.length || 'unknown'}`);
+      let xmlText;
       
-      // XML 파싱하여 기업코드 찾기 (간단한 검색)
-      const xmlText = response.data;
+      // 응답이 압축된 ZIP 파일인지 확인
+      try {
+        const JSZip = require('jszip');
+        const zip = new JSZip();
+        const contents = await zip.loadAsync(response.data);
+        
+        // ZIP 파일 내의 XML 파일 찾기
+        const xmlFile = Object.keys(contents.files)[0];
+        if (xmlFile) {
+          xmlText = await contents.files[xmlFile].async('text');
+          console.log(`📦 ZIP 파일에서 XML 추출 완료: ${xmlFile}`);
+        } else {
+          throw new Error('ZIP 파일 내 XML을 찾을 수 없음');
+        }
+      } catch (zipError) {
+        // ZIP이 아닌 경우 일반 텍스트로 처리
+        xmlText = response.data.toString();
+        console.log(`📄 일반 텍스트로 XML 처리`);
+      }
+      
+      // 응답 타입 확인
+      console.log(`📄 XML 길이: ${xmlText.length}`);
       
       // XML 구조 확인 (처음 1000자만)
       console.log(`🔍 XML 샘플: ${xmlText.substring(0, 1000)}...`);
       
-      const regex = new RegExp(`<stock_code>${stockCode}</stock_code>\\s*<corp_name>([^<]+)</corp_name>\\s*<corp_code>([^<]+)</corp_code>`, 'i');
-      const match = xmlText.match(regex);
+      // 여러 패턴으로 시도
+      const patterns = [
+        // 기본 패턴
+        new RegExp(`<stock_code>${stockCode}</stock_code>\\s*<corp_name>([^<]+)</corp_name>\\s*<corp_code>([^<]+)</corp_code>`, 'i'),
+        // 순서가 다른 경우
+        new RegExp(`<corp_code>([^<]+)</corp_code>\\s*<corp_name>([^<]+)</corp_name>\\s*<stock_code>${stockCode}</stock_code>`, 'i'),
+        // 더 유연한 패턴
+        new RegExp(`<list>.*?<stock_code>${stockCode}</stock_code>.*?<corp_name>([^<]+)</corp_name>.*?<corp_code>([^<]+)</corp_code>.*?</list>`, 'is')
+      ];
+      
+      let match = null;
+      for (let i = 0; i < patterns.length; i++) {
+        match = xmlText.match(patterns[i]);
+        if (match) {
+          console.log(`✅ 패턴 ${i + 1}로 매칭 성공`);
+          break;
+        }
+      }
       
       if (match) {
+        // 패턴에 따라 결과 순서가 다를 수 있음
+        let corpCode, corpName;
+        if (match.length >= 3) {
+          // 대부분의 패턴: [전체매칭, 회사명, 기업코드]
+          corpName = match[1].trim();
+          corpCode = match[2].trim();
+        }
+        
         const result = {
-          corpCode: match[2].trim(),
-          corpName: match[1].trim()
+          corpCode: corpCode,
+          corpName: corpName
         };
         console.log(`✅ ${stockCode} → 기업코드: ${result.corpCode}, 회사명: ${result.corpName}`);
         this.cache.set(cacheKey, result);
