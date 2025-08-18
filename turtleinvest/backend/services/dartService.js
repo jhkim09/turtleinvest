@@ -75,59 +75,37 @@ class DartService {
       // 전체 기업코드 파싱해서 Map으로 저장
       const corpCodeMap = new Map();
       
-      // 다양한 패턴으로 시도 (비어있지 않은 stock_code만)
-      const patterns = [
-        // 패턴 1: stock_code가 6자리 숫자인 경우만
-        /<list>[\s\S]*?<corp_code>([^<]+)<\/corp_code>[\s\S]*?<corp_name>([^<]+)<\/corp_name>[\s\S]*?<stock_code>(\d{6})<\/stock_code>[\s\S]*?<\/list>/g,
-        // 패턴 2: 더 유연한 패턴 (공백 제거)
-        /<list>[\s\S]*?<corp_code>([^<]+)<\/corp_code>[\s\S]*?<corp_name>([^<]+)<\/corp_name>[\s\S]*?<stock_code>\s*(\d+)\s*<\/stock_code>[\s\S]*?<\/list>/g,
-        // 패턴 3: 순서 무관하게 찾기
-        /<corp_code>([^<]+)<\/corp_code>[\s\S]*?<corp_name>([^<]+)<\/corp_name>[\s\S]*?<stock_code>\s*(\d{6})\s*<\/stock_code>/g
-      ];
+      // 특정 종목코드 찾기 - 모든 매칭을 찾아서 올바른 것 선택
+      let stockMatches = [];
+      const regex = /<list>[\s\S]*?<corp_code>([^<]+)<\/corp_code>[\s\S]*?<corp_name>([^<]+)<\/corp_name>[\s\S]*?<stock_code>\s*(\d{6})\s*<\/stock_code>[\s\S]*?<\/list>/g;
       
-      let count = 0;
-      let usedPattern = -1;
-      
-      for (let i = 0; i < patterns.length; i++) {
-        const regex = patterns[i];
-        regex.lastIndex = 0; // 정규식 리셋
-        
-        let match;
-        let tempCount = 0;
-        while ((match = regex.exec(xmlText)) !== null) {
-          // 모든 패턴: [전체, 기업코드, 회사명, 종목코드]
-          const [, corpCode, corpName, stockCode] = match;
-          
-          if (stockCode && stockCode.trim()) {
-            corpCodeMap.set(stockCode.trim(), {
-              corpCode: corpCode.trim(),
-              corpName: corpName.trim()
-            });
-            tempCount++;
-          }
-          
-          // 처음 몇 개만 로그 출력
-          if (tempCount <= 3) {
-            console.log(`📝 패턴${i+1} 매칭: ${stockCode} → ${corpCode}, ${corpName}`);
-          }
-        }
-        
-        if (tempCount > 0) {
-          count = tempCount;
-          usedPattern = i + 1;
-          console.log(`✅ 패턴 ${usedPattern} 사용: ${count}개 발견`);
-          break;
-        }
+      let match;
+      while ((match = regex.exec(xmlText)) !== null) {
+        const [, corpCode, corpName, foundStockCode] = match;
+        stockMatches.push({
+          stockCode: foundStockCode.trim(),
+          corpCode: corpCode.trim(),
+          corpName: corpName.trim()
+        });
       }
       
-      if (count === 0) {
-        console.log(`❌ 모든 패턴 실패. XML 구조가 예상과 다름`);
-        // XML에서 실제 태그 구조 확인
-        const sampleTags = xmlText.match(/<[^>]+>/g)?.slice(0, 20) || [];
-        console.log(`🏷️ 발견된 태그들: ${sampleTags.join(', ')}`);
+      console.log(`🔍 XML에서 총 ${stockMatches.length}개 상장기업 발견`);
+      
+      // 모든 종목 데이터를 Map에 저장
+      for (const stock of stockMatches) {
+        corpCodeMap.set(stock.stockCode, {
+          corpCode: stock.corpCode,
+          corpName: stock.corpName
+        });
       }
       
-      console.log(`✅ 총 ${count}개 기업코드 로딩 완료`);
+      console.log(`✅ 총 ${stockMatches.length}개 기업코드 로딩 완료`);
+      
+      // 처음 5개 샘플 출력
+      const samples = stockMatches.slice(0, 5);
+      samples.forEach(stock => {
+        console.log(`📝 샘플: ${stock.stockCode} → ${stock.corpCode}, ${stock.corpName}`);
+      });
       
       // 메모리 정리 (xmlText는 매우 큰 문자열이므로 명시적으로 해제)
       xmlText = null;
