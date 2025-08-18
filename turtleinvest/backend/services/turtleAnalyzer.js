@@ -36,21 +36,28 @@ class TurtleAnalyzer {
   // 개별 종목 분석
   static async analyzeStock(symbol, name) {
     try {
-      // 1. 과거 20일, 55일 가격 데이터 가져오기
-      const priceData = await this.getPriceData(symbol, 55);
+      // 1. 38일 일봉 데이터 + 52주 신고가/신저가 조회
+      const priceData = await this.getPriceData(symbol, 38);
+      const YahooFinanceService = require('./yahooFinanceService');
+      const highLowData = await YahooFinanceService.get52WeekHighLow(symbol);
       
-      if (priceData.length < 55) {
-        console.log(`⚠️ ${symbol}: 데이터 부족 (${priceData.length}일)`);
+      if (priceData.length < 20) {
+        console.log(`⚠️ ${symbol}: 일봉 데이터 부족 (${priceData.length}일)`);
+        return null;
+      }
+      
+      if (!highLowData) {
+        console.log(`⚠️ ${symbol}: 52주 신고가/신저가 데이터 없음`);
         return null;
       }
       
       const currentPrice = priceData[0].close;
       
-      // 2. 터틀 지표 계산
-      const indicators = this.calculateTurtleIndicators(priceData);
+      // 2. 터틀 지표 계산 (38일 일봉 + 52주 신고가/신저가)
+      const indicators = this.calculateTurtleIndicators(priceData, highLowData);
       
       // 3. 신호 판단
-      const signal = this.generateSignal(symbol, name, currentPrice, indicators, priceData);
+      const signal = this.generateSignal(symbol, name, currentPrice, indicators, priceData, highLowData);
       
       return signal;
       
@@ -60,18 +67,21 @@ class TurtleAnalyzer {
     }
   }
   
-  // 터틀 지표 계산
-  static calculateTurtleIndicators(priceData) {
+  // 터틀 지표 계산 (38일 일봉 + 52주 신고가/신저가)
+  static calculateTurtleIndicators(priceData, highLowData) {
     // 최근 데이터가 배열의 앞쪽에 있다고 가정
     const highs = priceData.map(d => d.high);
     const lows = priceData.map(d => d.low);
     const closes = priceData.map(d => d.close);
     
-    // 20일/10일 고저점
+    // System 1: 20일/10일 고저점 (38일 일봉 데이터 사용)
     const high20 = Math.max(...highs.slice(1, 21));  // 전일까지 20일
     const low10 = Math.min(...lows.slice(1, 11));    // 전일까지 10일
-    const high55 = Math.max(...highs.slice(1, 56));  // 전일까지 55일
     const low20 = Math.min(...lows.slice(1, 21));    // 전일까지 20일
+    
+    // System 2: 52주 신고가/신저가 (Yahoo Finance 별도 조회)
+    const high52w = highLowData?.week52High || high20; // 52주 신고가
+    const low52w = highLowData?.week52Low || low10;   // 52주 신저가
     
     // ATR 계산 (20일)
     const atr = this.calculateATR(priceData.slice(0, 21));
@@ -85,7 +95,8 @@ class TurtleAnalyzer {
     return {
       high20,
       low10,
-      high55,
+      high52w,    // 52주 신고가
+      low52w,     // 52주 신저가
       low20,
       atr,
       nValue: atr,
@@ -116,7 +127,7 @@ class TurtleAnalyzer {
   }
   
   // 신호 생성 (로깅 포함)
-  static generateSignal(symbol, name, currentPrice, indicators, priceData) {
+  static generateSignal(symbol, name, currentPrice, indicators, priceData, highLowData) {
     const signals = [];
     
     // 분석 로그 생성
@@ -126,15 +137,21 @@ class TurtleAnalyzer {
       currentPrice: currentPrice,
       high20: indicators.high20,
       low10: indicators.low10,
-      high55: indicators.high55,
+      high52w: indicators.high52w,
+      low52w: indicators.low52w,
       low20: indicators.low20,
       atr: indicators.atr,
       volumeRatio: indicators.volumeRatio,
       analysis: {
         system1_20d: currentPrice > indicators.high20 ? 'BREAKOUT' : 'NO_SIGNAL',
         system1_10d: currentPrice < indicators.low10 ? 'BREAKDOWN' : 'NO_SIGNAL',
-        system2_55d: currentPrice > indicators.high55 ? 'BREAKOUT' : 'NO_SIGNAL',
-        system2_20d: currentPrice < indicators.low20 ? 'BREAKDOWN' : 'NO_SIGNAL'
+        system2_52w: currentPrice > indicators.high52w ? 'BREAKOUT' : 'NO_SIGNAL',
+        system2_52w_low: currentPrice < indicators.low52w ? 'BREAKDOWN' : 'NO_SIGNAL'
+      },
+      week52Data: {
+        high52w: indicators.high52w,
+        low52w: indicators.low52w,
+        dataPoints: highLowData?.dataPoints || 0
       },
       dataInfo: {
         dataLength: priceData.length,
@@ -143,10 +160,11 @@ class TurtleAnalyzer {
     };
     
     // 터틀 분석 로그
-    console.log(`📊 터틀 분석 ${symbol}: 현재가 ${currentPrice}원 (데이터 ${priceData.length}일)`);
+    console.log(`📊 터틀 분석 ${symbol}: 현재가 ${currentPrice}원 (일봉 ${priceData.length}일, 52주 ${highLowData?.dataPoints || 0}일)`);
     console.log(`   System 1 - 20일 최고가: ${indicators.high20}원 (${currentPrice > indicators.high20 ? '매수 돌파!' : '미달'})`);
     console.log(`   System 1 - 10일 최저가: ${indicators.low10}원 (${currentPrice < indicators.low10 ? '매도 신호!' : '안전'})`);
-    console.log(`   System 2 - 55일 최고가: ${indicators.high55}원 (${currentPrice > indicators.high55 ? '매수 돌파!' : '미달'})`);
+    console.log(`   System 2 - 52주 신고가: ${indicators.high52w}원 (${currentPrice > indicators.high52w ? '매수 돌파!' : '미달'})`);
+    console.log(`   System 2 - 52주 신저가: ${indicators.low52w}원 (${currentPrice < indicators.low52w ? '매도 신호!' : '안전'})`);
     
     // 터틀 분석 로그를 전역 변수에 저장 (Make.com 응답용)
     if (!global.turtleAnalysisLogs) global.turtleAnalysisLogs = [];

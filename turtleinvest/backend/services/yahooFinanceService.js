@@ -163,17 +163,78 @@ class YahooFinanceService {
     this.cache.clear();
   }
   
+  // 52주 신고가/신저가 조회
+  async get52WeekHighLow(symbol) {
+    try {
+      const yahooSymbol = this.convertToYahooSymbol(symbol);
+      const cacheKey = `52week_${yahooSymbol}`;
+      
+      // 캐시 확인 (1시간간 유효)
+      if (this.cache.has(cacheKey)) {
+        const cached = this.cache.get(cacheKey);
+        if (Date.now() - cached.timestamp < 60 * 60 * 1000) {
+          return cached.data;
+        }
+      }
+      
+      const url = `${this.baseURL}/v8/finance/chart/${yahooSymbol}`;
+      
+      const response = await axios.get(url, {
+        params: {
+          range: '1y', // 1년 데이터
+          interval: '1d'
+        },
+        timeout: 10000
+      });
+      
+      if (response.data.chart?.result?.[0]) {
+        const result = response.data.chart.result[0];
+        const quotes = result.indicators?.quote?.[0] || {};
+        const highs = quotes.high || [];
+        const lows = quotes.low || [];
+        
+        const week52High = Math.max(...highs.filter(h => h != null));
+        const week52Low = Math.min(...lows.filter(l => l != null));
+        
+        const highLowData = {
+          symbol: symbol,
+          week52High: Math.round(week52High),
+          week52Low: Math.round(week52Low),
+          dataPoints: highs.length
+        };
+        
+        // 캐시 저장
+        this.cache.set(cacheKey, {
+          data: highLowData,
+          timestamp: Date.now()
+        });
+        
+        console.log(`✅ Yahoo Finance: ${symbol} 52주 신고가 ${week52High}원, 신저가 ${week52Low}원`);
+        return highLowData;
+      }
+      
+      throw new Error('52주 데이터가 없습니다');
+      
+    } catch (error) {
+      console.error(`Yahoo Finance 52주 조회 실패 (${symbol}):`, error.message);
+      return null;
+    }
+  }
+  
   // 연결 테스트
   async testConnection(symbol = '005930') {
     try {
       const price = await this.getCurrentPrice(symbol);
       const chartData = await this.getDailyChartData(symbol, 5);
+      const highLow = await this.get52WeekHighLow(symbol);
       
       return {
         success: true,
         symbol: symbol,
         currentPrice: price,
         chartDataLength: chartData?.length || 0,
+        week52High: highLow?.week52High || 0,
+        week52Low: highLow?.week52Low || 0,
         message: 'Yahoo Finance 연결 성공'
       };
     } catch (error) {
