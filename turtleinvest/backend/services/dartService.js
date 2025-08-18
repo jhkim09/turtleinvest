@@ -91,8 +91,23 @@ class DartService {
       
       console.log(`🔍 XML에서 총 ${stockMatches.length}개 상장기업 발견`);
       
-      // 모든 종목 데이터를 Map에 저장
+      // 모든 종목 데이터를 Map에 저장 (실제 상장기업 우선 선택)
       for (const stock of stockMatches) {
+        // 이미 해당 종목코드가 있는 경우, 더 적합한 회사명인지 확인
+        if (corpCodeMap.has(stock.stockCode)) {
+          const existing = corpCodeMap.get(stock.stockCode);
+          
+          // 부동산투자회사, 유동화전문회사 등은 제외하고 실제 기업 우선
+          const skipKeywords = ['유동화전문', '부동산투자회사', '위탁관리', '사모투자', '새마을금고'];
+          const isExistingBetter = !skipKeywords.some(keyword => existing.corpName.includes(keyword));
+          const isCurrentWorse = skipKeywords.some(keyword => stock.corpName.includes(keyword));
+          
+          if (isExistingBetter && isCurrentWorse) {
+            // 기존이 더 좋으므로 건너뛰기
+            continue;
+          }
+        }
+        
         corpCodeMap.set(stock.stockCode, {
           corpCode: stock.corpCode,
           corpName: stock.corpName
