@@ -12,6 +12,7 @@ class DartService {
     this.allCorpCodes = null;
     this.lastCorpCodeUpdate = null;
     this.corpCodeCacheExpiry = 24 * 60 * 60 * 1000; // 24시간 캐시
+    this.isLoading = false; // 동시 로딩 방지
   }
   
   // 전체 기업코드 데이터 로드 (24시간 캐시)
@@ -24,6 +25,18 @@ class DartService {
         return this.allCorpCodes;
       }
       
+      // 동시 로딩 방지 (여러 종목이 동시에 요청할 때)
+      if (this.isLoading) {
+        console.log(`⏳ 다른 요청이 이미 기업코드 로딩 중... 대기`);
+        // 로딩 완료까지 대기
+        while (this.isLoading) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        // 로딩 완료 후 캐시 반환
+        return this.allCorpCodes;
+      }
+      
+      this.isLoading = true;
       console.log(`📋 DART API: 전체 기업코드 데이터 로딩 중...`);
       
       const response = await axios.get(`${this.baseURL}/corpCode.xml`, {
@@ -75,14 +88,24 @@ class DartService {
       
       console.log(`✅ 총 ${count}개 기업코드 로딩 완료`);
       
+      // 메모리 정리 (xmlText는 매우 큰 문자열이므로 명시적으로 해제)
+      xmlText = null;
+      
       this.allCorpCodes = corpCodeMap;
       this.lastCorpCodeUpdate = now;
+      
+      // 가비지 컬렉션 힌트
+      if (global.gc) {
+        global.gc();
+      }
       
       return this.allCorpCodes;
       
     } catch (error) {
       console.error(`❌ 전체 기업코드 로딩 실패:`, error.message);
       return null;
+    } finally {
+      this.isLoading = false; // 로딩 플래그 해제
     }
   }
   
