@@ -69,21 +69,72 @@ class DartService {
         console.log(`📄 일반 텍스트로 처리, 크기: ${xmlText.length}`);
       }
       
+      // XML 실제 구조 분석 (처음 2000자)
+      console.log(`🔍 XML 구조 샘플:\n${xmlText.substring(0, 2000)}`);
+      
       // 전체 기업코드 파싱해서 Map으로 저장
       const corpCodeMap = new Map();
-      const regex = /<list>\s*<corp_code>([^<]+)<\/corp_code>\s*<corp_name>([^<]+)<\/corp_name>\s*<stock_code>([^<]*)<\/stock_code>/g;
       
-      let match;
+      // 다양한 패턴으로 시도
+      const patterns = [
+        // 패턴 1: <list><corp_code>...<corp_name>...<stock_code>...</list>
+        /<list>\s*<corp_code>([^<]+)<\/corp_code>\s*<corp_name>([^<]+)<\/corp_name>\s*<stock_code>([^<]*)<\/stock_code>/g,
+        // 패턴 2: 순서가 다른 경우
+        /<list>\s*<stock_code>([^<]*)<\/stock_code>\s*<corp_name>([^<]+)<\/corp_name>\s*<corp_code>([^<]+)<\/corp_code>/g,
+        // 패턴 3: 더 단순한 구조
+        /<corp_code>([^<]+)<\/corp_code>\s*<corp_name>([^<]+)<\/corp_name>\s*<stock_code>([^<]*)<\/stock_code>/g
+      ];
+      
       let count = 0;
-      while ((match = regex.exec(xmlText)) !== null) {
-        const [, corpCode, corpName, stockCode] = match;
-        if (stockCode && stockCode.trim()) {
-          corpCodeMap.set(stockCode.trim(), {
-            corpCode: corpCode.trim(),
-            corpName: corpName.trim()
-          });
-          count++;
+      let usedPattern = -1;
+      
+      for (let i = 0; i < patterns.length; i++) {
+        const regex = patterns[i];
+        regex.lastIndex = 0; // 정규식 리셋
+        
+        let match;
+        let tempCount = 0;
+        while ((match = regex.exec(xmlText)) !== null) {
+          let corpCode, corpName, stockCode;
+          
+          if (i === 0) {
+            // 패턴 1: [전체, 기업코드, 회사명, 종목코드]
+            [, corpCode, corpName, stockCode] = match;
+          } else if (i === 1) {
+            // 패턴 2: [전체, 종목코드, 회사명, 기업코드]
+            [, stockCode, corpName, corpCode] = match;
+          } else {
+            // 패턴 3: [전체, 기업코드, 회사명, 종목코드]
+            [, corpCode, corpName, stockCode] = match;
+          }
+          
+          if (stockCode && stockCode.trim()) {
+            corpCodeMap.set(stockCode.trim(), {
+              corpCode: corpCode.trim(),
+              corpName: corpName.trim()
+            });
+            tempCount++;
+          }
+          
+          // 처음 몇 개만 로그 출력
+          if (tempCount <= 3) {
+            console.log(`📝 패턴${i+1} 매칭: ${stockCode} → ${corpCode}, ${corpName}`);
+          }
         }
+        
+        if (tempCount > 0) {
+          count = tempCount;
+          usedPattern = i + 1;
+          console.log(`✅ 패턴 ${usedPattern} 사용: ${count}개 발견`);
+          break;
+        }
+      }
+      
+      if (count === 0) {
+        console.log(`❌ 모든 패턴 실패. XML 구조가 예상과 다름`);
+        // XML에서 실제 태그 구조 확인
+        const sampleTags = xmlText.match(/<[^>]+>/g)?.slice(0, 20) || [];
+        console.log(`🏷️ 발견된 태그들: ${sampleTags.join(', ')}`);
       }
       
       console.log(`✅ 총 ${count}개 기업코드 로딩 완료`);
