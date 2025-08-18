@@ -27,16 +27,15 @@ class YahooFinanceService {
         }
       }
       
-      // 기간 설정 (현재부터 과거로)
+      // 기간 설정 (현재부터 과거로 - 여유분 추가)
       const endDate = Math.floor(Date.now() / 1000);
-      const startDate = endDate - (days * 24 * 60 * 60); // days일 전
+      const startDate = endDate - ((days + 30) * 24 * 60 * 60); // days + 30일 전 (주말/공휴일 고려)
       
       const url = `${this.baseURL}/v8/finance/chart/${yahooSymbol}`;
       
       const response = await axios.get(url, {
         params: {
-          period1: startDate,
-          period2: endDate,
+          range: '3mo', // 3개월 데이터 (약 90일)
           interval: '1d',
           includePrePost: false,
           events: 'div,splits'
