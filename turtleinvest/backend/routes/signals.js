@@ -3,6 +3,7 @@ const router = express.Router();
 const Signal = require('../models/Signal');
 const TurtleAnalyzer = require('../services/turtleAnalyzer');
 const SuperstocksAnalyzer = require('../services/superstocksAnalyzer');
+const SlackMessageFormatter = require('../services/slackMessageFormatter');
 
 // 최신 신호 조회
 router.get('/latest', async (req, res) => {
@@ -236,7 +237,43 @@ router.post('/make-analysis', async (req, res) => {
         analysisType: 'integrated_turtle_superstocks',
         market: 'KRX',
         apiVersion: '2.0'
-      }
+      },
+      slackMessage: SlackMessageFormatter.formatIntegratedAnalysis({
+        timestamp: new Date().toISOString(),
+        summary: {
+          turtleSignals: turtleSignals.length,
+          qualifiedSuperstocks: superstocks.filter(s => s.meetsConditions).length,
+          overlappingStocks: overlappingStocks.length,
+          hasOverlap: overlappingStocks.length > 0
+        },
+        turtleTrading: {
+          signals: turtleSignals.map(signal => ({
+            symbol: signal.symbol,
+            name: signal.name,
+            signalType: signal.signalType,
+            currentPrice: signal.currentPrice,
+            action: signal.recommendedAction?.action || 'HOLD',
+            reasoning: signal.recommendedAction?.reasoning || ''
+          }))
+        },
+        superstocks: {
+          qualifiedStocks: superstocks.filter(s => s.meetsConditions).map(stock => ({
+            symbol: stock.symbol,
+            name: stock.name,
+            currentPrice: stock.currentPrice,
+            revenueGrowth3Y: stock.revenueGrowth3Y,
+            netIncomeGrowth3Y: stock.netIncomeGrowth3Y,
+            psr: stock.psr
+          }))
+        },
+        premiumOpportunities: overlappingStocks,
+        investmentSettings: {
+          budget: budget,
+          budgetDisplay: `${(budget/10000).toFixed(0)}만원`,
+          riskPerTrade: budget * 0.02,
+          riskDisplay: `${(budget * 0.02 / 10000).toFixed(0)}만원`
+        }
+      })
     };
     
     res.json(result);
@@ -611,7 +648,16 @@ router.post('/sell-analysis', async (req, res) => {
         analysisType: 'sell_signals',
         market: 'KRX',
         apiVersion: '1.0'
-      }
+      },
+      slackMessage: SlackMessageFormatter.formatSellSignals({
+        timestamp: new Date().toISOString(),
+        sellSignals: sellSignals,
+        accountSummary: {
+          totalAsset: accountData.totalAsset,
+          cash: accountData.cash,
+          positionCount: accountData.positions.length
+        }
+      })
     });
     
   } catch (error) {
