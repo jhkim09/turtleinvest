@@ -14,18 +14,39 @@ class TurtleAnalyzer {
       
       // 2. 각 종목별 신호 분석
       const signals = [];
+      const processedSymbols = new Set(); // 중복 방지
+      
       for (const stock of watchlist) {
+        if (processedSymbols.has(stock.symbol)) {
+          console.log(`⚠️ ${stock.symbol}: 이미 분석된 종목, 건너뜀`);
+          continue;
+        }
+        
         const signal = await this.analyzeStock(stock.symbol, stock.name);
         if (signal) {
           signals.push(signal);
+          processedSymbols.add(stock.symbol);
         }
       }
       
-      // 3. 신호 저장
-      await this.saveSignals(signals);
+      // 3. 중복 신호 최종 제거
+      const uniqueSignals = [];
+      const signalSymbols = new Set();
       
-      console.log(`✅ 분석 완료: ${signals.length}개 신호 발견`);
-      return signals;
+      for (const signal of signals) {
+        if (!signalSymbols.has(signal.symbol)) {
+          uniqueSignals.push(signal);
+          signalSymbols.add(signal.symbol);
+        }
+      }
+      
+      console.log(`📊 신호 중복 제거: ${signals.length}개 → ${uniqueSignals.length}개`);
+      
+      // 4. 신호 저장
+      await this.saveSignals(uniqueSignals);
+      
+      console.log(`✅ 분석 완료: ${uniqueSignals.length}개 신호 발견`);
+      return uniqueSignals;
       
     } catch (error) {
       console.error('❌ 시장 분석 실패:', error);
@@ -222,6 +243,11 @@ class TurtleAnalyzer {
       signal.recommendedAction = this.calculateRecommendedAction('SELL', signal, indicators);
       
       signals.push(signal);
+    }
+    
+    // 중복 제거: 같은 종목에서 여러 신호 발생시 우선순위 적용
+    if (signals.length > 1) {
+      console.log(`⚠️ ${symbol}: ${signals.length}개 신호 발생, 첫 번째 신호만 반환`);
     }
     
     return signals.length > 0 ? signals[0] : null; // 하나의 신호만 반환
