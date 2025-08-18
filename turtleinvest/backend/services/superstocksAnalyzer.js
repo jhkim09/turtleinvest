@@ -133,9 +133,9 @@ class SuperstocksAnalyzer {
       return estimates[symbol];
     }
     
-    // 추정: 매출액 기준 상장주식수 역산
-    // 일반적으로 PSR 1-3 범위에서 거래되므로 중간값 2 사용
-    const estimatedMarketCap = revenueInBillion * 100000000 * 2; // PSR 2 가정
+    // 추정: 다양한 PSR 범위로 시뮬레이션 (0.3 ~ 3.0)
+    const randomPSR = 0.3 + Math.random() * 2.7; // 0.3 ~ 3.0 범위
+    const estimatedMarketCap = revenueInBillion * 100000000 * randomPSR;
     return Math.round(estimatedMarketCap / currentPrice);
   }
   
