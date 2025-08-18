@@ -29,7 +29,15 @@ app.use(cors({
 app.use(express.json());
 
 // MongoDB 연결 (연결 실패해도 서버는 동작)
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/turtleinvest')
+const mongoOptions = {
+  writeConcern: {
+    w: 'majority',
+    j: true,
+    wtimeout: 1000
+  }
+};
+
+mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/turtleinvest', mongoOptions)
 .then(() => {
   console.log('🐢 MongoDB 연결 성공!');
   console.log('Database: turtleinvest');
