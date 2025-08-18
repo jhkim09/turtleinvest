@@ -115,11 +115,79 @@ class TurtleAnalyzer {
     return avgTR;
   }
   
-  // 신호 생성
+  // 신호 생성 (로깅 포함)
   static generateSignal(symbol, name, currentPrice, indicators, priceData) {
     const signals = [];
     
-    // System 1: 20일 돌파 신호
+    // 분석 로그 생성
+    const analysisLog = {
+      symbol: symbol,
+      name: name,
+      currentPrice: currentPrice,
+      high20: indicators.high20,
+      low10: indicators.low10,
+      high55: indicators.high55,
+      low20: indicators.low20,
+      atr: indicators.atr,
+      volumeRatio: indicators.volumeRatio,
+      analysis: {
+        system1_20d: currentPrice > indicators.high20 ? 'BREAKOUT' : 'NO_SIGNAL',
+        system1_10d: currentPrice < indicators.low10 ? 'BREAKDOWN' : 'NO_SIGNAL',
+        system2_55d: currentPrice > indicators.high55 ? 'BREAKOUT' : 'NO_SIGNAL',
+        system2_20d: currentPrice < indicators.low20 ? 'BREAKDOWN' : 'NO_SIGNAL'
+      },
+      testConditions: {
+        // 테스트용 완화 조건 (10일)
+        high10: Math.max(...priceData.slice(1, 11).map(d => d.high)),
+        system1_10d_test: null
+      }
+    };
+    
+    // 테스트용 완화 조건 계산
+    analysisLog.testConditions.system1_10d_test = currentPrice > analysisLog.testConditions.high10 ? 'BREAKOUT' : 'NO_SIGNAL';
+    
+    // 현재 조건으로 신호 확인
+    console.log(`📊 터틀 분석 ${symbol}: 현재가 ${currentPrice}원`);
+    console.log(`   20일 최고가: ${indicators.high20}원 (${currentPrice > indicators.high20 ? '돌파!' : '미달'})`);
+    console.log(`   10일 최저가: ${indicators.low10}원 (${currentPrice < indicators.low10 ? '하향돌파!' : '안전'})`);
+    console.log(`   [테스트] 10일 최고가: ${analysisLog.testConditions.high10}원 (${analysisLog.testConditions.system1_10d_test})`);
+    
+    // 터틀 분석 로그를 전역 변수에 저장 (Make.com 응답용)
+    if (!global.turtleAnalysisLogs) global.turtleAnalysisLogs = [];
+    global.turtleAnalysisLogs.push(analysisLog);
+    
+    // *** 테스트용 완화 조건 (10일 돌파) ***
+    if (currentPrice > analysisLog.testConditions.high10) {
+      console.log(`🎯 [테스트] ${symbol}: 10일 돌파 신호 발생!`);
+      const signal = {
+        symbol,
+        name,
+        date: new Date(),
+        signalType: 'BUY',
+        currentPrice,
+        breakoutPrice: analysisLog.testConditions.high10,
+        highPrice20D: indicators.high20,
+        lowPrice10D: indicators.low10,
+        atr: indicators.atr,
+        nValue: indicators.nValue,
+        volume: indicators.volume,
+        avgVolume20: indicators.avgVolume20,
+        volumeRatio: indicators.volumeRatio,
+        signalStrength: this.calculateSignalStrength(indicators),
+        confidence: this.calculateConfidence(indicators),
+        recommendedAction: {
+          action: 'BUY',
+          quantity: Math.floor(1000000 / currentPrice), // 100만원 기준
+          riskAmount: indicators.atr * 2 * Math.floor(1000000 / currentPrice),
+          reasoning: `[테스트] 10일 최고가 ${analysisLog.testConditions.high10}원 돌파 (완화 조건)`
+        },
+        timestamp: new Date().toISOString(),
+        testMode: true // 테스트 신호 표시
+      };
+      signals.push(signal);
+    }
+    
+    // System 1: 20일 돌파 신호 (원래 조건)
     if (currentPrice > indicators.high20) {
       // 20일 고점 돌파 - 매수 신호
       const signal = {

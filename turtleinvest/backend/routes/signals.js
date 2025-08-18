@@ -106,6 +106,9 @@ router.post('/make-analysis', async (req, res) => {
     
     console.log('🔍 Make.com에서 통합 분석 요청 (터틀 + 슈퍼스톡스)');
     
+    // 터틀 분석 로그 초기화
+    global.turtleAnalysisLogs = [];
+    
     // 터틀 분석
     const turtleSignals = await TurtleAnalyzer.analyzeMarket();
     
@@ -155,8 +158,12 @@ router.post('/make-analysis', async (req, res) => {
           signalType: signal.signalType,
           currentPrice: signal.currentPrice,
           action: signal.recommendedAction?.action || 'HOLD',
-          reasoning: signal.recommendedAction?.reasoning || ''
-        }))
+          reasoning: signal.recommendedAction?.reasoning || '',
+          breakoutPrice: signal.breakoutPrice || null,
+          highPrice20D: signal.highPrice20D || null,
+          lowPrice10D: signal.lowPrice10D || null
+        })),
+        analysisLogs: (global.turtleAnalysisLogs || []).slice(0, 5) // 처음 5개 종목 분석 로그
       },
       superstocks: {
         totalAnalyzed: stockList.length,
