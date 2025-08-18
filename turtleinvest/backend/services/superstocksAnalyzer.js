@@ -1,4 +1,5 @@
 const KiwoomService = require('./kiwoomService');
+const DartService = require('./dartService');
 
 class SuperstocksAnalyzer {
   
@@ -44,37 +45,47 @@ class SuperstocksAnalyzer {
     }
   }
   
-  // 개별 종목 분석 (시뮬레이션 데이터)
+  // 개별 종목 분석 (DART API 실제 데이터)
   async analyzeStock(symbol) {
     try {
-      // 현재가 조회
+      console.log(`📊 ${symbol} 슈퍼스톡스 분석 시작...`);
+      
+      // 1. 현재가 조회 (키움 API)
       const currentPrice = await KiwoomService.getCurrentPrice(symbol);
       
-      // 시뮬레이션 재무 데이터 생성
-      const financialData = this.generateSimulationFinancials(symbol);
+      // 2. DART API로 실제 재무데이터 조회
+      let financialData = await DartService.analyzeStockFinancials(symbol);
       
-      // PSR 계산 (시가총액 / 매출액)
-      const marketCap = currentPrice * financialData.sharesOutstanding;
-      const psr = marketCap / financialData.revenue;
+      // 3. DART 데이터 실패시 시뮬레이션 데이터 사용
+      if (!financialData) {
+        console.log(`⚠️ ${symbol}: DART 데이터 없음, 시뮬레이션 사용`);
+        financialData = this.generateSimulationFinancials(symbol);
+        financialData.revenueGrowth3Y = this.calculateGrowthRate(financialData.revenueHistory);
+        financialData.netIncomeGrowth3Y = this.calculateGrowthRate(financialData.netIncomeHistory);
+      }
       
-      // 성장률 계산
-      const revenueGrowth3Y = this.calculateGrowthRate(financialData.revenueHistory);
-      const netIncomeGrowth3Y = this.calculateGrowthRate(financialData.netIncomeHistory);
+      // 4. PSR 계산 (시가총액 / 매출액)
+      // 시가총액 = 현재가 × 상장주식수 (더미 또는 추정)
+      const estimatedShares = this.estimateSharesOutstanding(symbol, currentPrice, financialData.revenue);
+      const marketCap = currentPrice * estimatedShares;
+      const psr = financialData.revenue > 0 ? marketCap / (financialData.revenue * 100000000) : 999; // 억원 → 원 변환
       
+      // 5. 결과 반환
       return {
         symbol: symbol,
         name: this.getStockName(symbol),
         currentPrice: currentPrice,
-        revenueGrowth3Y: revenueGrowth3Y,
-        netIncomeGrowth3Y: netIncomeGrowth3Y,
-        psr: psr,
+        revenueGrowth3Y: financialData.revenueGrowth3Y,
+        netIncomeGrowth3Y: financialData.netIncomeGrowth3Y,
+        psr: Math.round(psr * 100) / 100, // 소수점 2자리
         marketCap: marketCap,
         revenue: financialData.revenue,
         netIncome: financialData.netIncome,
-        score: this.calculateScore(revenueGrowth3Y, netIncomeGrowth3Y, psr),
+        dataSource: financialData.stockCode ? 'DART' : 'SIMULATION',
+        score: this.calculateScore(financialData.revenueGrowth3Y, financialData.netIncomeGrowth3Y, psr),
         meetsConditions: (
-          revenueGrowth3Y >= this.minRevenueGrowth &&
-          netIncomeGrowth3Y >= this.minNetIncomeGrowth &&
+          financialData.revenueGrowth3Y >= this.minRevenueGrowth &&
+          financialData.netIncomeGrowth3Y >= this.minNetIncomeGrowth &&
           psr <= this.maxPSR
         ),
         timestamp: new Date().toISOString()
@@ -84,6 +95,27 @@ class SuperstocksAnalyzer {
       console.error(`${symbol} 분석 실패:`, error);
       return null;
     }
+  }
+  
+  // 상장주식수 추정 (시가총액 역산)
+  estimateSharesOutstanding(symbol, currentPrice, revenueInBillion) {
+    // 대략적인 상장주식수 추정 (업종별 특성 고려)
+    const estimates = {
+      '005930': 5969782550,  // 삼성전자
+      '000660': 728002365,   // SK하이닉스
+      '035420': 164688891,   // NAVER
+      '005380': 2924634238,  // 현대차
+      '012330': 41800000     // 현대모비스
+    };
+    
+    if (estimates[symbol]) {
+      return estimates[symbol];
+    }
+    
+    // 추정: 매출액 기준 상장주식수 역산
+    // 일반적으로 PSR 1-3 범위에서 거래되므로 중간값 2 사용
+    const estimatedMarketCap = revenueInBillion * 100000000 * 2; // PSR 2 가정
+    return Math.round(estimatedMarketCap / currentPrice);
   }
   
   // 시뮬레이션 재무 데이터 생성
