@@ -75,7 +75,7 @@ function App() {
   const [activeTab, setActiveTab] = useState('portfolio');
   const [kiwoomConnected, setKiwoomConnected] = useState(false);
 
-  const API_BASE = 'http://localhost:9001/api';
+  const API_BASE = 'https://turtleinvest.onrender.com/api';
 
   useEffect(() => {
     loadPortfolio();

@@ -15,9 +15,15 @@ const testRoutes = require('./routes/test');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// 미들웨어
+// 미들웨어 (로컬 프론트엔드 접근 허용)
 app.use(cors({
-  origin: true,
+  origin: [
+    'http://localhost:3000',
+    'http://localhost:3001', 
+    'http://localhost:3002',
+    'http://localhost:3003',
+    'https://turtleinvest.onrender.com'
+  ],
   credentials: true
 }));
 app.use(express.json());
