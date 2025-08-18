@@ -68,22 +68,19 @@ class SuperstocksAnalyzer {
         netIncomeHistory: simData.netIncomeHistory
       };
       
-      console.log(`📊 ${symbol} 분석: 현재가 ${currentPrice}원, 매출성장률 ${financialData.revenueGrowth3Y}%, 순이익성장률 ${financialData.netIncomeGrowth3Y}%`);
-      
-      // TODO: DART API 기업코드 매핑 문제 해결 후 실제 데이터 사용
-      /*
-      let financialData = await DartService.analyzeStockFinancials(symbol);
-      if (!financialData) {
-        console.log(`⚠️ ${symbol}: DART 데이터 없음, 시뮬레이션 사용`);
-        // 시뮬레이션 로직...
-      }
-      */
-      
       // 4. PSR 계산 (시가총액 / 매출액)
-      // 시가총액 = 현재가 × 상장주식수 (더미 또는 추정)
       const estimatedShares = this.estimateSharesOutstanding(symbol, currentPrice, financialData.revenue);
       const marketCap = currentPrice * estimatedShares;
-      const psr = financialData.revenue > 0 ? marketCap / (financialData.revenue * 100000000) : 999; // 억원 → 원 변환
+      const psr = financialData.revenue > 0 ? marketCap / (financialData.revenue * 100000000) : 999;
+      
+      // 조건 확인
+      const meetsConditions = (
+        financialData.revenueGrowth3Y >= this.minRevenueGrowth &&
+        financialData.netIncomeGrowth3Y >= this.minNetIncomeGrowth &&
+        psr <= this.maxPSR
+      );
+      
+      console.log(`📊 ${symbol} 완료: 현재가 ${currentPrice}원, 매출성장률 ${financialData.revenueGrowth3Y}%, 순이익성장률 ${financialData.netIncomeGrowth3Y}%, PSR ${psr.toFixed(2)}, 조건만족: ${meetsConditions}`);
       
       // 5. 결과 반환
       return {
@@ -98,11 +95,7 @@ class SuperstocksAnalyzer {
         netIncome: financialData.netIncome,
         dataSource: financialData.stockCode ? 'DART' : 'SIMULATION',
         score: this.calculateScore(financialData.revenueGrowth3Y, financialData.netIncomeGrowth3Y, psr),
-        meetsConditions: (
-          financialData.revenueGrowth3Y >= this.minRevenueGrowth &&
-          financialData.netIncomeGrowth3Y >= this.minNetIncomeGrowth &&
-          psr <= this.maxPSR
-        ),
+        meetsConditions: meetsConditions,
         timestamp: new Date().toISOString()
       };
       
