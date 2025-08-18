@@ -8,20 +8,82 @@ class DartService {
     this.cache = new Map(); // 캐시로 API 호출 최소화
     this.rateLimitDelay = 200; // API 호출 간격 (밀리초)
     
-    // 주요 종목 기업코드 직접 매핑 (DART API 우회용)
-    this.corpCodeMap = {
-      '005930': '00126380', // 삼성전자
-      '000660': '00164779', // SK하이닉스  
-      '035420': '00781427', // NAVER
-      '005380': '00164742', // 현대차
-      '012330': '00164779', // 현대모비스
-      '000270': '00164485', // 기아
-      '105560': '00188992', // KB금융
-      '055550': '00188807', // 신한지주
-      '035720': '00826799', // 카카오
-      '051910': '00164779', // LG화학
-      '032350': '00164485'  // 롯데관광개발
-    };
+    // 전체 기업코드 캐시 (한 번만 로드하고 재사용)
+    this.allCorpCodes = null;
+    this.lastCorpCodeUpdate = null;
+    this.corpCodeCacheExpiry = 24 * 60 * 60 * 1000; // 24시간 캐시
+  }
+  
+  // 전체 기업코드 데이터 로드 (24시간 캐시)
+  async loadAllCorpCodes() {
+    try {
+      // 캐시가 유효한지 확인
+      const now = Date.now();
+      if (this.allCorpCodes && this.lastCorpCodeUpdate && 
+          (now - this.lastCorpCodeUpdate) < this.corpCodeCacheExpiry) {
+        return this.allCorpCodes;
+      }
+      
+      console.log(`📋 DART API: 전체 기업코드 데이터 로딩 중...`);
+      
+      const response = await axios.get(`${this.baseURL}/corpCode.xml`, {
+        params: {
+          crtfc_key: this.apiKey
+        },
+        responseType: 'arraybuffer'
+      });
+      
+      if (!response.data) {
+        throw new Error('DART API 응답 없음');
+      }
+      
+      let xmlText;
+      
+      // ZIP 파일 처리
+      try {
+        const JSZip = require('jszip');
+        const zip = new JSZip();
+        const contents = await zip.loadAsync(response.data);
+        const xmlFile = Object.keys(contents.files)[0];
+        if (xmlFile) {
+          xmlText = await contents.files[xmlFile].async('text');
+          console.log(`📦 ZIP에서 XML 추출: ${xmlFile}, 크기: ${xmlText.length}`);
+        } else {
+          throw new Error('ZIP 파일 내 XML 없음');
+        }
+      } catch (zipError) {
+        xmlText = response.data.toString();
+        console.log(`📄 일반 텍스트로 처리, 크기: ${xmlText.length}`);
+      }
+      
+      // 전체 기업코드 파싱해서 Map으로 저장
+      const corpCodeMap = new Map();
+      const regex = /<list>\s*<corp_code>([^<]+)<\/corp_code>\s*<corp_name>([^<]+)<\/corp_name>\s*<stock_code>([^<]*)<\/stock_code>/g;
+      
+      let match;
+      let count = 0;
+      while ((match = regex.exec(xmlText)) !== null) {
+        const [, corpCode, corpName, stockCode] = match;
+        if (stockCode && stockCode.trim()) {
+          corpCodeMap.set(stockCode.trim(), {
+            corpCode: corpCode.trim(),
+            corpName: corpName.trim()
+          });
+          count++;
+        }
+      }
+      
+      console.log(`✅ 총 ${count}개 기업코드 로딩 완료`);
+      
+      this.allCorpCodes = corpCodeMap;
+      this.lastCorpCodeUpdate = now;
+      
+      return this.allCorpCodes;
+      
+    } catch (error) {
+      console.error(`❌ 전체 기업코드 로딩 실패:`, error.message);
+      return null;
+    }
   }
   
   // 기업 고유번호 조회 (종목코드 → 기업코드 변환)
@@ -32,97 +94,20 @@ class DartService {
         return this.cache.get(cacheKey);
       }
       
-      // 먼저 하드코딩된 매핑 확인
-      if (this.corpCodeMap[stockCode]) {
-        const result = {
-          corpCode: this.corpCodeMap[stockCode],
-          corpName: this.getStockName(stockCode)
-        };
-        console.log(`✅ ${stockCode} 하드코딩 매핑: ${result.corpCode}, ${result.corpName}`);
-        this.cache.set(cacheKey, result);
-        return result;
-      }
-      
-      console.log(`🔍 DART API: ${stockCode} 기업코드 조회 중...`);
-      
-      const response = await axios.get(`${this.baseURL}/corpCode.xml`, {
-        params: {
-          crtfc_key: this.apiKey
-        },
-        responseType: 'arraybuffer' // XML 파일이 압축되어 있을 수 있음
-      });
-      
-      if (!response.data) {
-        console.error(`❌ DART API 응답 없음 (${stockCode})`);
+      // 전체 기업코드 데이터 확인
+      const allCorpCodes = await this.loadAllCorpCodes();
+      if (!allCorpCodes) {
+        console.log(`❌ ${stockCode} 전체 기업코드 데이터 로딩 실패`);
         return null;
       }
       
-      let xmlText;
-      
-      // 응답이 압축된 ZIP 파일인지 확인
-      try {
-        const JSZip = require('jszip');
-        const zip = new JSZip();
-        const contents = await zip.loadAsync(response.data);
-        
-        // ZIP 파일 내의 XML 파일 찾기
-        const xmlFile = Object.keys(contents.files)[0];
-        if (xmlFile) {
-          xmlText = await contents.files[xmlFile].async('text');
-          console.log(`📦 ZIP 파일에서 XML 추출 완료: ${xmlFile}`);
-        } else {
-          throw new Error('ZIP 파일 내 XML을 찾을 수 없음');
-        }
-      } catch (zipError) {
-        // ZIP이 아닌 경우 일반 텍스트로 처리
-        xmlText = response.data.toString();
-        console.log(`📄 일반 텍스트로 XML 처리`);
-      }
-      
-      // 응답 타입 확인
-      console.log(`📄 XML 길이: ${xmlText.length}`);
-      
-      // XML 구조 확인 (처음 1000자만)
-      console.log(`🔍 XML 샘플: ${xmlText.substring(0, 1000)}...`);
-      
-      // 여러 패턴으로 시도
-      const patterns = [
-        // 기본 패턴
-        new RegExp(`<stock_code>${stockCode}</stock_code>\\s*<corp_name>([^<]+)</corp_name>\\s*<corp_code>([^<]+)</corp_code>`, 'i'),
-        // 순서가 다른 경우
-        new RegExp(`<corp_code>([^<]+)</corp_code>\\s*<corp_name>([^<]+)</corp_name>\\s*<stock_code>${stockCode}</stock_code>`, 'i'),
-        // 더 유연한 패턴
-        new RegExp(`<list>.*?<stock_code>${stockCode}</stock_code>.*?<corp_name>([^<]+)</corp_name>.*?<corp_code>([^<]+)</corp_code>.*?</list>`, 'is')
-      ];
-      
-      let match = null;
-      for (let i = 0; i < patterns.length; i++) {
-        match = xmlText.match(patterns[i]);
-        if (match) {
-          console.log(`✅ 패턴 ${i + 1}로 매칭 성공`);
-          break;
-        }
-      }
-      
-      if (match) {
-        // 패턴에 따라 결과 순서가 다를 수 있음
-        let corpCode, corpName;
-        if (match.length >= 3) {
-          // 대부분의 패턴: [전체매칭, 회사명, 기업코드]
-          corpName = match[1].trim();
-          corpCode = match[2].trim();
-        }
-        
-        const result = {
-          corpCode: corpCode,
-          corpName: corpName
-        };
-        console.log(`✅ ${stockCode} → 기업코드: ${result.corpCode}, 회사명: ${result.corpName}`);
+      const result = allCorpCodes.get(stockCode);
+      if (result) {
+        console.log(`✅ ${stockCode} → ${result.corpCode}, ${result.corpName}`);
         this.cache.set(cacheKey, result);
         return result;
       }
       
-      console.log(`❌ ${stockCode} 기업코드를 XML에서 찾을 수 없음`);
       return null;
       
     } catch (error) {
