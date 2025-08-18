@@ -6,7 +6,7 @@ class SuperstocksAnalyzer {
   constructor() {
     this.minRevenueGrowth = 15; // 최소 매출 성장률 (%)
     this.minNetIncomeGrowth = 15; // 최소 당기순이익 성장률 (%)
-    this.maxPSR = 2.0; // 최대 PSR (EXCELLENT 조건)
+    this.maxPSR = 0.75; // 최대 PSR (슈퍼스톡스 원래 조건)
     this.analysisYears = 3; // 분석 기간 (년)
   }
 
