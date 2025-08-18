@@ -160,19 +160,11 @@ router.post('/make-analysis', async (req, res) => {
       },
       superstocks: {
         totalAnalyzed: stockList.length,
-        qualifiedStocks: superstocks.length,
+        qualifiedStocks: superstocks.filter(s => s.meetsConditions).length,
         excellentStocks: superstocks.filter(s => s.score === 'EXCELLENT').length,
-        allAnalyzedStocks: superstocks.map(stock => ({
-          symbol: stock.symbol,
-          name: stock.name,
-          currentPrice: stock.currentPrice,
-          revenueGrowth3Y: stock.revenueGrowth3Y,
-          netIncomeGrowth3Y: stock.netIncomeGrowth3Y,
-          psr: stock.psr,
-          score: stock.score,
-          meetsConditions: stock.meetsConditions,
-          dataSource: stock.dataSource || 'UNKNOWN'
-        })),
+        goodStocks: superstocks.filter(s => s.score === 'GOOD').length,
+        
+        // 조건 만족 주식들
         qualifiedStocks: superstocks.filter(s => s.meetsConditions).map(stock => ({
           symbol: stock.symbol,
           name: stock.name,
@@ -182,6 +174,44 @@ router.post('/make-analysis', async (req, res) => {
           psr: stock.psr,
           score: stock.score,
           dataSource: stock.dataSource
+        })),
+        
+        // 점수별 분류
+        excellentStocks: superstocks.filter(s => s.score === 'EXCELLENT').map(stock => ({
+          symbol: stock.symbol,
+          name: stock.name,
+          currentPrice: stock.currentPrice,
+          revenueGrowth3Y: stock.revenueGrowth3Y,
+          netIncomeGrowth3Y: stock.netIncomeGrowth3Y,
+          psr: stock.psr,
+          score: stock.score,
+          meetsConditions: stock.meetsConditions,
+          dataSource: stock.dataSource
+        })),
+        
+        goodStocks: superstocks.filter(s => s.score === 'GOOD').map(stock => ({
+          symbol: stock.symbol,
+          name: stock.name,
+          currentPrice: stock.currentPrice,
+          revenueGrowth3Y: stock.revenueGrowth3Y,
+          netIncomeGrowth3Y: stock.netIncomeGrowth3Y,
+          psr: stock.psr,
+          score: stock.score,
+          meetsConditions: stock.meetsConditions,
+          dataSource: stock.dataSource
+        })),
+        
+        // 전체 분석 결과 (처음 20개만)
+        allAnalyzedStocks: superstocks.slice(0, 20).map(stock => ({
+          symbol: stock.symbol,
+          name: stock.name,
+          currentPrice: stock.currentPrice,
+          revenueGrowth3Y: stock.revenueGrowth3Y,
+          netIncomeGrowth3Y: stock.netIncomeGrowth3Y,
+          psr: stock.psr,
+          score: stock.score,
+          meetsConditions: stock.meetsConditions,
+          dataSource: stock.dataSource || 'UNKNOWN'
         }))
       },
       premiumOpportunities: overlappingStocks,
