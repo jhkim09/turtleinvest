@@ -349,8 +349,7 @@ class TurtleAnalyzer {
       console.error('신호 저장 실패:', error);
     }
   }
-}
-
+  
   // 매도 조건 확인 (보유 종목용)
   static checkSellConditions(signal, position) {
     const currentPrice = position.currentPrice;
