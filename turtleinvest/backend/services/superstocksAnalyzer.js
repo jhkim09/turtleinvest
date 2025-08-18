@@ -53,16 +53,28 @@ class SuperstocksAnalyzer {
       // 1. 현재가 조회 (키움 API)
       const currentPrice = await KiwoomService.getCurrentPrice(symbol);
       
-      // 2. DART API로 실제 재무데이터 조회
-      let financialData = await DartService.analyzeStockFinancials(symbol);
+      // 2. 임시로 시뮬레이션 데이터 사용 (DART API 문제 해결 전까지)
+      const simData = this.generateSimulationFinancials(symbol);
+      const financialData = {
+        stockCode: null, // 시뮬레이션 표시
+        revenue: simData.revenue,
+        netIncome: simData.netIncome,
+        revenueGrowth3Y: this.calculateGrowthRate(simData.revenueHistory),
+        netIncomeGrowth3Y: this.calculateGrowthRate(simData.netIncomeHistory),
+        revenueHistory: simData.revenueHistory,
+        netIncomeHistory: simData.netIncomeHistory
+      };
       
-      // 3. DART 데이터 실패시 시뮬레이션 데이터 사용
+      console.log(`📊 ${symbol} 분석: 현재가 ${currentPrice}원, 매출성장률 ${financialData.revenueGrowth3Y}%, 순이익성장률 ${financialData.netIncomeGrowth3Y}%`);
+      
+      // TODO: DART API 기업코드 매핑 문제 해결 후 실제 데이터 사용
+      /*
+      let financialData = await DartService.analyzeStockFinancials(symbol);
       if (!financialData) {
         console.log(`⚠️ ${symbol}: DART 데이터 없음, 시뮬레이션 사용`);
-        financialData = this.generateSimulationFinancials(symbol);
-        financialData.revenueGrowth3Y = this.calculateGrowthRate(financialData.revenueHistory);
-        financialData.netIncomeGrowth3Y = this.calculateGrowthRate(financialData.netIncomeHistory);
+        // 시뮬레이션 로직...
       }
+      */
       
       // 4. PSR 계산 (시가총액 / 매출액)
       // 시가총액 = 현재가 × 상장주식수 (더미 또는 추정)
