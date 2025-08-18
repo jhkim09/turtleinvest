@@ -162,7 +162,7 @@ router.post('/make-analysis', async (req, res) => {
         totalAnalyzed: stockList.length,
         qualifiedStocks: superstocks.length,
         excellentStocks: superstocks.filter(s => s.score === 'EXCELLENT').length,
-        stocks: superstocks.map(stock => ({
+        allAnalyzedStocks: superstocks.map(stock => ({
           symbol: stock.symbol,
           name: stock.name,
           currentPrice: stock.currentPrice,
@@ -170,7 +170,18 @@ router.post('/make-analysis', async (req, res) => {
           netIncomeGrowth3Y: stock.netIncomeGrowth3Y,
           psr: stock.psr,
           score: stock.score,
-          meetsConditions: stock.meetsConditions
+          meetsConditions: stock.meetsConditions,
+          dataSource: stock.dataSource || 'UNKNOWN'
+        })),
+        qualifiedStocks: superstocks.filter(s => s.meetsConditions).map(stock => ({
+          symbol: stock.symbol,
+          name: stock.name,
+          currentPrice: stock.currentPrice,
+          revenueGrowth3Y: stock.revenueGrowth3Y,
+          netIncomeGrowth3Y: stock.netIncomeGrowth3Y,
+          psr: stock.psr,
+          score: stock.score,
+          dataSource: stock.dataSource
         }))
       },
       premiumOpportunities: overlappingStocks,
@@ -196,6 +207,154 @@ router.post('/make-analysis', async (req, res) => {
 });
 
 // (개별 API 제거 - 통합 API만 사용)
+
+// 상세 분석 결과 조회 API (디버깅용)
+router.get('/analysis-details', async (req, res) => {
+  try {
+    console.log('🔍 상세 분석 결과 조회 요청');
+    
+    // 터틀 분석
+    const turtleSignals = await TurtleAnalyzer.analyzeMarket();
+    
+    // 슈퍼스톡스 분석 (모든 결과 포함)
+    const stockList = SuperstocksAnalyzer.getDefaultStockList();
+    const allSuperstocks = await SuperstocksAnalyzer.analyzeSuperstocks(stockList);
+    
+    // 조건별 분류
+    const qualifiedStocks = allSuperstocks.filter(s => s && s.meetsConditions);
+    const failedAnalysis = stockList.filter(symbol => 
+      !allSuperstocks.find(s => s && s.symbol === symbol)
+    );
+    
+    res.json({
+      success: true,
+      timestamp: new Date().toISOString(),
+      analysisDetails: {
+        totalStocksToAnalyze: stockList.length,
+        successfullyAnalyzed: allSuperstocks.filter(s => s).length,
+        failedAnalysis: failedAnalysis.length,
+        qualifiedStocks: qualifiedStocks.length,
+        dartDataUsed: allSuperstocks.filter(s => s && s.dataSource === 'DART').length,
+        simulationDataUsed: allSuperstocks.filter(s => s && s.dataSource === 'SIMULATION').length
+      },
+      stockResults: allSuperstocks.filter(s => s).map(stock => ({
+        symbol: stock.symbol,
+        name: stock.name,
+        currentPrice: stock.currentPrice,
+        revenueGrowth3Y: stock.revenueGrowth3Y,
+        netIncomeGrowth3Y: stock.netIncomeGrowth3Y,
+        psr: stock.psr,
+        score: stock.score,
+        meetsConditions: stock.meetsConditions,
+        dataSource: stock.dataSource,
+        revenue: stock.revenue,
+        netIncome: stock.netIncome,
+        marketCap: stock.marketCap,
+        conditions: {
+          revenueGrowthOK: stock.revenueGrowth3Y >= 15,
+          netIncomeGrowthOK: stock.netIncomeGrowth3Y >= 15,
+          psrOK: stock.psr <= 0.75
+        }
+      })),
+      failedStocks: failedAnalysis,
+      turtleSignals: turtleSignals,
+      lastUpdated: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('상세 분석 조회 실패:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// MongoDB 분석 결과 저장
+router.post('/save-analysis', async (req, res) => {
+  try {
+    const { analysisType, results } = req.body;
+    
+    const Signal = require('../models/Signal');
+    
+    // 기존 분석 결과 삭제 (최신 상태 유지)
+    await Signal.deleteMany({ 
+      signalType: analysisType,
+      date: { $gte: new Date().setHours(0,0,0,0) } // 오늘 분석 결과만
+    });
+    
+    // 새 분석 결과 저장
+    for (const result of results) {
+      const signal = new Signal({
+        symbol: result.symbol,
+        name: result.name,
+        signalType: analysisType,
+        currentPrice: result.currentPrice,
+        confidence: result.score || 'medium',
+        reasoning: JSON.stringify(result),
+        metadata: {
+          dataSource: result.dataSource,
+          revenueGrowth3Y: result.revenueGrowth3Y,
+          netIncomeGrowth3Y: result.netIncomeGrowth3Y,
+          psr: result.psr
+        },
+        date: new Date(),
+        timestamp: new Date().toISOString()
+      });
+      
+      await signal.save();
+    }
+    
+    res.json({
+      success: true,
+      message: `${results.length}개 분석 결과 저장 완료`,
+      analysisType: analysisType,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('분석 결과 저장 실패:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
+// MongoDB 저장된 분석 결과 조회
+router.get('/saved-analysis/:type?', async (req, res) => {
+  try {
+    const analysisType = req.params.type;
+    const limit = parseInt(req.query.limit) || 100;
+    
+    const Signal = require('../models/Signal');
+    
+    let query = {};
+    if (analysisType) {
+      query.signalType = analysisType;
+    }
+    
+    const savedResults = await Signal.find(query)
+      .sort({ date: -1 })
+      .limit(limit);
+    
+    res.json({
+      success: true,
+      total: savedResults.length,
+      results: savedResults,
+      lastUpdated: savedResults[0]?.date || null,
+      message: `${savedResults.length}개 저장된 분석 결과`
+    });
+    
+  } catch (error) {
+    console.error('저장된 분석 조회 실패:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
 
 // Make.com 웹훅 수신용 엔드포인트
 router.post('/webhook', async (req, res) => {
