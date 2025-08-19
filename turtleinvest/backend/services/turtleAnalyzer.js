@@ -1,13 +1,24 @@
 const Signal = require('../models/Signal');
 const Portfolio = require('../models/Portfolio');
 const KiwoomService = require('./kiwoomService');
+const FinancialDataCacheService = require('./financialDataCacheService');
 
 class TurtleAnalyzer {
   
   // 메인 분석 함수 - 매일 아침 실행
-  static async analyzeMarket() {
+  static async analyzeMarket(options = {}) {
     try {
       console.log('🐢 터틀 트레이딩 시장 분석 시작...');
+      
+      const { 
+        useFinancialFilter = false, // 재무건전성 필터 사용 여부
+        minRevenueGrowth = 10,      // 최소 매출성장률
+        maxPSR = 3.0               // 최대 PSR
+      } = options;
+      
+      if (useFinancialFilter) {
+        console.log(`🔍 재무건전성 필터 적용: 매출성장률 ≥${minRevenueGrowth}%, PSR ≤${maxPSR}`);
+      }
       
       // 1. 관심종목 리스트 가져오기
       const watchlist = await this.getWatchlist();
@@ -24,7 +35,28 @@ class TurtleAnalyzer {
         
         const signal = await this.analyzeStock(stock.symbol, stock.name);
         if (signal) {
-          signals.push(signal);
+          // 재무건전성 필터 적용
+          if (useFinancialFilter) {
+            const passesFinancialFilter = await this.checkFinancialHealth(
+              stock.symbol, 
+              signal.currentPrice, 
+              minRevenueGrowth, 
+              maxPSR
+            );
+            
+            if (passesFinancialFilter) {
+              console.log(`✅ ${stock.symbol} 기술적 신호 + 재무건전성 통과`);
+              signals.push({
+                ...signal,
+                hasFinancialData: true,
+                financialScore: passesFinancialFilter.score
+              });
+            } else {
+              console.log(`⚠️ ${stock.symbol} 기술적 신호 있지만 재무건전성 미달`);
+            }
+          } else {
+            signals.push(signal);
+          }
           processedSymbols.add(stock.symbol);
         }
       }
@@ -359,8 +391,14 @@ class TurtleAnalyzer {
     }
   }
   
-  // 관심종목 리스트 (터틀 트레이딩) - 전체 상장주식 대상
+  // 관심종목 리스트 (터틀 트레이딩) - 통합 종목 풀 사용
   static async getWatchlist() {
+    const StockListService = require('./stockListService');
+    return StockListService.getTurtleWatchlist();
+  }
+  
+  // 기존 하드코딩된 종목 리스트 (백업용)
+  static async getLegacyWatchlist() {
     // 터틀 트레이딩: 코스피 + 코스닥 전체 주요 상장주식 (500개)
     const allStocks = [
       // === 코스피 주요 종목 (시가총액 상위 250개) ===
@@ -497,6 +535,53 @@ class TurtleAnalyzer {
     console.log(`📊 ${position.symbol} 매도 조건: ${sellConditions.shouldSell ? sellConditions.reason : '보유 유지'} (손익: ${unrealizedPLPercent.toFixed(1)}%)`);
     
     return sellConditions;
+  }
+  
+  // 재무건전성 체크 (터틀 신호에 재무 필터 추가)
+  static async checkFinancialHealth(symbol, currentPrice, minRevenueGrowth = 10, maxPSR = 3.0) {
+    try {
+      console.log(`🔍 ${symbol} 재무건전성 체크 시작...`);
+      
+      // 캐시된 재무데이터 조회
+      const financialData = await FinancialDataCacheService.getCachedFinancialData(symbol);
+      
+      if (!financialData) {
+        console.log(`⚠️ ${symbol} 재무데이터 없음, 재무 필터 통과 (기술적 신호만)`);
+        return { passed: true, score: 'NO_DATA', reason: '재무데이터 없음' };
+      }
+      
+      // PSR 계산
+      let psr = null;
+      if (financialData.sharesOutstanding && financialData.revenue > 0) {
+        const marketCap = currentPrice * financialData.sharesOutstanding;
+        const revenueInWon = financialData.revenue * 100000000;
+        psr = marketCap / revenueInWon;
+      }
+      
+      // 재무건전성 조건 체크
+      const revenueGrowthPass = financialData.revenueGrowth3Y >= minRevenueGrowth;
+      const psrPass = psr === null || psr <= maxPSR;
+      
+      const passed = revenueGrowthPass && psrPass;
+      
+      console.log(`📊 ${symbol} 재무건전성: 매출성장률 ${financialData.revenueGrowth3Y}% (${revenueGrowthPass ? '✅' : '❌'}), PSR ${psr?.toFixed(3) || 'N/A'} (${psrPass ? '✅' : '❌'})`);
+      
+      return {
+        passed: passed,
+        score: passed ? 'HEALTHY' : 'WEAK',
+        reason: passed ? '재무건전성 양호' : '재무건전성 미달',
+        details: {
+          revenueGrowth3Y: financialData.revenueGrowth3Y,
+          netIncomeGrowth3Y: financialData.netIncomeGrowth3Y,
+          psr: psr,
+          dataSource: financialData.dataSource
+        }
+      };
+      
+    } catch (error) {
+      console.error(`재무건전성 체크 실패 (${symbol}):`, error);
+      return { passed: true, score: 'ERROR', reason: '재무 체크 오류' };
+    }
   }
 }
 

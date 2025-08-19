@@ -51,17 +51,49 @@ router.get('/stock/:stockCode', async (req, res) => {
   }
 });
 
-// 슈퍼스톡스 100개 종목 재무데이터 일괄 수집
+// 통합 500개 종목 재무데이터 일괄 수집
+router.post('/bulk/unified', async (req, res) => {
+  try {
+    console.log('🚀 통합 500개 종목 재무데이터 일괄 수집 시작...');
+    
+    const StockListService = require('../services/stockListService');
+    const stockCodes = StockListService.getUnifiedStockList();
+    const stats = StockListService.getStatistics();
+    
+    console.log(`📊 대상 종목: ${stats.total}개 (코스피 ${stats.kospi}개 + 코스닥 ${stats.kosdaq}개)`);
+    
+    const results = await FinancialDataCacheService.bulkCollectFinancialData(
+      stockCodes, 
+      req.body.batchSize || 8 // 500개라서 배치 크기 줄임
+    );
+    
+    res.json({
+      success: true,
+      results: results,
+      stockListStats: stats,
+      message: `통합 종목 재무데이터 일괄 수집 완료: ${results.success}개 성공, ${results.failed}개 실패`
+    });
+    
+  } catch (error) {
+    console.error('통합 일괄 수집 실패:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// 슈퍼스톡스 100개 종목 재무데이터 일괄 수집 (기존 호환성)
 router.post('/bulk/superstocks', async (req, res) => {
   try {
     console.log('🚀 슈퍼스톡스 종목 재무데이터 일괄 수집 시작...');
     
-    // 슈퍼스톡스 분석 대상 종목 리스트
+    // 슈퍼스톡스 분석 대상 종목 리스트 (이제 500개)
     const stockCodes = SuperstocksAnalyzer.getDefaultStockList();
     
     const results = await FinancialDataCacheService.bulkCollectFinancialData(
       stockCodes, 
-      req.body.batchSize || 10
+      req.body.batchSize || 8
     );
     
     res.json({

@@ -103,9 +103,13 @@ cron.schedule('0 6 1 4 *', async () => {
       console.log('📊 새로운 재무데이터 수집년도로 업데이트됨');
     }
     
-    // 2. 슈퍼스톡스 100개 종목 재무데이터 일괄 수집
-    const stockCodes = SuperstocksAnalyzer.getDefaultStockList();
-    const results = await FinancialDataCacheService.bulkCollectFinancialData(stockCodes, 8);
+    // 2. 통합 500개 종목 재무데이터 일괄 수집
+    const StockListService = require('./services/stockListService');
+    const stockCodes = StockListService.getUnifiedStockList();
+    const stats = StockListService.getStatistics();
+    
+    console.log(`📊 대상 종목: ${stats.total}개 (코스피 ${stats.kospi}개 + 코스닥 ${stats.kosdaq}개)`);
+    const results = await FinancialDataCacheService.bulkCollectFinancialData(stockCodes, 6); // 500개라서 더 작은 배치
     
     // 3. 오래된 캐시 데이터 정리 (2년 이상)
     const cleanedCount = await FinancialDataCacheService.cleanupOldCache(2);

@@ -394,8 +394,14 @@ class SuperstocksAnalyzer {
     else return 'POOR';
   }
   
-  // 코스피 50개 + 코스닥 우량주 30개 종목 (총 80개) - Yahoo Finance 정확도 고려
+  // 통합된 500개 종목 리스트 사용
   getDefaultStockList() {
+    const StockListService = require('./stockListService');
+    return StockListService.getSuperstocksStockList();
+  }
+
+  // 기존 100개 우량주 리스트 (백업용)
+  getLegacyStockList() {
     return [
       // === 코스피 상위 50종목 ===
       '005930', // 삼성전자

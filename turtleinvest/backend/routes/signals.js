@@ -24,7 +24,7 @@ router.get('/latest', async (req, res) => {
   }
 });
 
-// 수동 분석 실행
+// 수동 분석 실행 (기존 - 순수 기술적 분석)
 router.post('/analyze', async (req, res) => {
   try {
     console.log('🔍 수동 터틀 분석 시작...');
@@ -46,6 +46,49 @@ router.post('/analyze', async (req, res) => {
       success: false, 
       message: error.message,
       error: '터틀 분석 중 오류가 발생했습니다'
+    });
+  }
+});
+
+// 재무건전성 필터링이 있는 터틀 분석
+router.post('/analyze-with-financial-filter', async (req, res) => {
+  try {
+    console.log('🔍 재무 필터링 터틀 분석 시작...');
+    
+    const { 
+      minRevenueGrowth = 10,
+      maxPSR = 3.0
+    } = req.body;
+    
+    // 재무건전성 필터가 있는 터틀 분석 실행
+    const signals = await TurtleAnalyzer.analyzeMarket({
+      useFinancialFilter: true,
+      minRevenueGrowth: minRevenueGrowth,
+      maxPSR: maxPSR
+    });
+    
+    const financialSignals = signals.filter(s => s.hasFinancialData);
+    
+    res.json({
+      success: true,
+      message: '재무 필터링 터틀 분석 완료',
+      signals: signals,
+      financialSignals: financialSignals,
+      count: signals.length,
+      financialCount: financialSignals.length,
+      filterSettings: {
+        minRevenueGrowth: minRevenueGrowth,
+        maxPSR: maxPSR
+      },
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('재무 필터링 분석 실패:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: error.message,
+      error: '재무 필터링 터틀 분석 중 오류가 발생했습니다'
     });
   }
 });
