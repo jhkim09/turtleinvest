@@ -13,6 +13,7 @@ const kiwoomRoutes = require('./routes/kiwoom');
 const testRoutes = require('./routes/test');
 const financialDataRoutes = require('./routes/financialData');
 const test500Routes = require('./routes/test500');
+const testCorpCodeRoutes = require('./routes/testCorpCode');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -55,6 +56,7 @@ app.use('/api/kiwoom', kiwoomRoutes);
 app.use('/api/test', testRoutes);
 app.use('/api/financial-data', financialDataRoutes);
 app.use('/api/test500', test500Routes);
+app.use('/api/test-corp-code', testCorpCodeRoutes);
 
 // Health Check (향상된 버전)
 app.get('/api/health', async (req, res) => {
