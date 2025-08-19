@@ -8,6 +8,11 @@ class SuperstocksAnalyzer {
     this.minNetIncomeGrowth = 15; // 최소 당기순이익 성장률 (%)
     this.maxPSR = 0.75; // 최대 PSR (슈퍼스톡스 원래 조건)
     this.analysisYears = 3; // 분석 기간 (년)
+    
+    // PSR 조건 참고사항:
+    // - 원래 슈퍼스톡스: 0.75 (매우 엄격, 현재 시장에서는 비현실적)
+    // - 현실적 기준: 2.5 (성장주 고려, 양질의 기업도 포함 가능)
+    // - 보수적 기준: 1.5 (더 엄격한 선별)
   }
 
   // 슈퍼스톡스 조건 분석 (병렬 처리로 성능 최적화)
@@ -134,7 +139,11 @@ class SuperstocksAnalyzer {
               currentPrice: currentPrice,
               revenueGrowth3Y: financialData.revenueGrowth3Y,
               netIncomeGrowth3Y: financialData.netIncomeGrowth3Y,
-              psr: Math.round(calculatedPSR * 1000) / 1000,
+              psr: (() => {
+                const rounded = Math.round(calculatedPSR * 1000) / 1000;
+                console.log(`🔢 ${symbol} Yahoo PSR 반올림: ${calculatedPSR} → ${rounded}`);
+                return rounded;
+              })(),
               marketCap: currentMarketCap,
               revenue: yahooInfo.totalRevenue / 100000000, // 원 → 억원
               netIncome: financialData.netIncome,
@@ -147,7 +156,11 @@ class SuperstocksAnalyzer {
               ),
               timestamp: new Date().toISOString()
             };
+          } else {
+            console.log(`⚠️ ${symbol} Yahoo totalRevenue 없음, DART 매출로 PSR 계산 계속 진행`);
           }
+        } else {
+          console.log(`⚠️ ${symbol} Yahoo 상장주식수 없음`);
         }
       } catch (error) {
         console.log(`⚠️ ${symbol} Yahoo Finance 조회 실패: ${error.message}`);
@@ -172,13 +185,26 @@ class SuperstocksAnalyzer {
       console.log(`💰 ${symbol} 매출: ${financialData.revenue.toLocaleString()}억원, 매출(원) ${(financialData.revenue * 100000000).toLocaleString()}원`);
       
       const revenueInWon = financialData.revenue * 100000000; // 억원 → 원 변환
-      const psr = revenueInWon > 0 ? marketCap / revenueInWon : 999;
+      let psr = revenueInWon > 0 ? marketCap / revenueInWon : 999;
       
       console.log(`📊 ${symbol} PSR 계산상세:`);
+      console.log(`   현재가: ${currentPrice}원`);
+      console.log(`   상장주식수: ${actualShares?.toLocaleString()}주`);
       console.log(`   시총(원): ${marketCap.toLocaleString()}`);
       console.log(`   매출(억원): ${financialData.revenue.toLocaleString()}`);
       console.log(`   매출(원): ${revenueInWon.toLocaleString()}`);
-      console.log(`   PSR: ${marketCap.toLocaleString()} ÷ ${revenueInWon.toLocaleString()} = ${psr.toFixed(6)}`);
+      console.log(`   원본 PSR: ${psr}`);
+      console.log(`   PSR 타입: ${typeof psr}`);
+      console.log(`   PSR isNaN: ${isNaN(psr)}`);
+      console.log(`   PSR isFinite: ${isFinite(psr)}`);
+      
+      // PSR이 비정상적인 경우 처리
+      if (isNaN(psr) || !isFinite(psr) || psr < 0) {
+        console.log(`⚠️ ${symbol} PSR 비정상 값 감지: ${psr}, 999로 설정`);
+        psr = 999;
+      }
+      
+      console.log(`   최종 PSR: ${psr}`);
       
       // 조건 확인
       const meetsConditions = (
@@ -196,7 +222,11 @@ class SuperstocksAnalyzer {
         currentPrice: currentPrice,
         revenueGrowth3Y: financialData.revenueGrowth3Y,
         netIncomeGrowth3Y: financialData.netIncomeGrowth3Y,
-        psr: Math.round(psr * 1000) / 1000, // 소수점 3자리로 더 정밀하게
+        psr: (() => {
+          const rounded = Math.round(psr * 1000) / 1000;
+          console.log(`🔢 ${symbol} PSR 반올림: ${psr} → Math.round(${psr} * 1000) / 1000 = ${rounded}`);
+          return rounded;
+        })(), // 소수점 3자리로 더 정밀하게
         marketCap: marketCap,
         revenue: financialData.revenue,
         netIncome: financialData.netIncome,

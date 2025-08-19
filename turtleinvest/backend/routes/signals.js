@@ -336,7 +336,7 @@ router.get('/analysis-details', async (req, res) => {
         conditions: {
           revenueGrowthOK: stock.revenueGrowth3Y >= 15,
           netIncomeGrowthOK: stock.netIncomeGrowth3Y >= 15,
-          psrOK: stock.psr <= 0.75
+          psrOK: stock.psr <= 2.5
         }
       })),
       failedStocks: failedAnalysis,
