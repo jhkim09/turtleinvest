@@ -1,13 +1,15 @@
 # 🐢 TurtleInvest
 
-터틀트레이딩 전략 기반 자동 투자 신호 및 포지션 관리 시스템
+터틀트레이딩 & 슈퍼스톡스 전략 기반 자동 투자 분석 API 시스템
 
 ## 🎯 프로젝트 목표
 
 - **매일 아침 투자 신호 알람**: 20일/10일 돌파 기반 매수/매도 신호
+- **슈퍼스톡스 분석**: PSR ≤0.75, 성장률 ≥15% 조건 분석
 - **실제 포지션 기반 리스크 관리**: 2% 리스크 룰 자동 계산
 - **스마트 주문량 계산**: ATR 기반 정확한 포지션 사이징
 - **자동 알람 시스템**: Make.com 연동 메신저 알람
+- **재무데이터 캐싱**: 연 1회 수집으로 안정적 운영
 
 ## 📚 터틀트레이딩 전략
 
@@ -26,17 +28,26 @@
 ## 🏗️ 시스템 아키텍처
 
 ```
-TurtleInvest
-├── backend/              # Node.js API 서버
-│   ├── models/          # 데이터 모델 (포지션, 거래기록)
-│   ├── services/        # 키움 API, 신호 계산
-│   ├── routes/          # REST API 엔드포인트
-│   └── scheduler/       # 일일 분석 스케줄러
-├── frontend/            # React 웹앱
-│   ├── components/      # UI 컴포넌트
-│   ├── pages/          # 페이지 (대시보드, 설정)
-│   └── utils/          # 유틸리티 함수
-└── docs/               # 문서 및 가이드
+TurtleInvest (API 전용)
+├── backend/                    # Node.js API 서버
+│   ├── models/                # 데이터 모델
+│   │   ├── FinancialData.js   # 재무데이터 캐싱
+│   │   ├── Portfolio.js       # 포지션 관리
+│   │   ├── Signal.js         # 투자 신호
+│   │   └── Trade.js          # 거래 기록
+│   ├── services/             # 핵심 분석 엔진
+│   │   ├── turtleAnalyzer.js        # 터틀 트레이딩 (500개 종목)
+│   │   ├── superstocksAnalyzer.js   # 슈퍼스톡스 (500개 종목)
+│   │   ├── financialDataCacheService.js # 재무데이터 캐싱
+│   │   ├── stockListService.js      # 통합 종목 관리
+│   │   ├── kiwoomService.js         # 키움 API
+│   │   └── dartService.js           # DART API
+│   ├── routes/               # REST API 엔드포인트
+│   │   ├── signals.js        # 신호 분석 API
+│   │   ├── financialData.js  # 재무데이터 관리 API
+│   │   └── positions.js      # 포지션 관리 API
+│   └── scheduler/            # 자동화 스케줄러
+└── docs/                     # 문서 및 가이드
 ```
 
 ## 🚀 주요 기능
@@ -101,11 +112,33 @@ TurtleInvest
 ## 🛠️ 기술 스택
 
 - **Backend**: Node.js + Express + MongoDB
-- **Frontend**: React + TypeScript  
-- **Real-time Data**: 키움 OpenAPI Plus
-- **Scheduler**: node-cron
+- **Data Sources**: 키움 OpenAPI Plus + DART API (+ Yahoo Finance 백업)
+- **Financial Cache**: MongoDB with annual collection strategy
+- **Scheduler**: node-cron (daily analysis + annual data update)
 - **Notifications**: Make.com webhook
-- **Database**: MongoDB (거래기록, 포지션)
+- **Database**: MongoDB (포지션, 거래기록, 재무데이터 캐시)
+
+## 📊 투자 전략
+
+### 🐢 터틀 트레이딩 (500개 종목)
+- **순수 기술적**: 20일 돌파 + ATR 리스크 관리
+- **하이브리드**: 기술적 신호 + 재무건전성 필터 (매출성장률 ≥10%, PSR ≤3.0)
+
+### ⭐ 슈퍼스톡스 (500개 종목) 
+- **엄격한 재무조건**: 매출성장률 ≥15%, 순이익성장률 ≥15%, PSR ≤0.75
+- **연 1회 데이터 업데이트**: 매년 4월 1일 전년도 재무데이터 수집
+
+## 🚀 주요 API 엔드포인트
+
+### 신호 분석
+- `POST /api/signals/analyze` - 터틀 신호 분석 (기술적)
+- `POST /api/signals/analyze-with-financial-filter` - 터틀 + 재무 필터
+- `POST /api/signals/make-analysis` - 슈퍼스톡스 분석
+
+### 재무데이터 관리  
+- `POST /api/financial-data/bulk/unified` - 500개 종목 일괄 수집
+- `GET /api/financial-data/cache/stats` - 캐시 통계
+- `GET /api/financial-data/stock/:code` - 개별 종목 재무데이터
 
 ---
 

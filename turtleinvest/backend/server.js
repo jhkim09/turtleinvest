@@ -16,14 +16,11 @@ const financialDataRoutes = require('./routes/financialData');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// 미들웨어 (로컬 프론트엔드 접근 허용)
+// 미들웨어 (API 전용 - 프론트엔드 제거)
 app.use(cors({
   origin: [
-    'http://localhost:3000',
-    'http://localhost:3001', 
-    'http://localhost:3002',
-    'http://localhost:3003',
-    'https://turtleinvest.onrender.com'
+    'https://hook.us2.make.com', // Make.com 웹훅
+    'https://turtleinvest.onrender.com' // 같은 도메인
   ],
   credentials: true
 }));
