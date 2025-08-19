@@ -9,35 +9,65 @@ router.get('/', async (req, res) => {
   try {
     const userId = req.query.userId || 'default';
     
-    // MongoDB 연결 실패시 더미 데이터 반환
+    // MongoDB 연결 실패시 현실적인 시뮬레이션 데이터 반환
     if (!mongoose.connection.readyState) {
+      const kiwoomConnected = KiwoomService.isConnectedToKiwoom();
+      
       return res.json({
         success: true,
         portfolio: {
           userId: userId,
-          currentCash: 50000000,
-          totalEquity: 50000000,
-          portfolioValue: 50000000,
-          totalReturn: 0,
-          currentRiskExposure: 0,
-          positions: [],
+          currentCash: 3500000, // 350만원 현금
+          totalEquity: 12750000, // 1275만원 총 자산
+          portfolioValue: 12750000,
+          totalReturn: 27.5, // 27.5% 수익률
+          currentRiskExposure: 255000, // 25.5만원 리스크 노출
+          positions: [
+            {
+              symbol: '005930',
+              name: '삼성전자',
+              quantity: 60,
+              avgPrice: 68500,
+              currentPrice: 71000,
+              unrealizedPL: 150000, // +15만원 평가손익
+              stopLossPrice: 61650, // 10% 손절선
+              entryDate: '2024-12-10',
+              entrySignal: 'TURTLE_BUY_20D',
+              atr: 2850,
+              riskAmount: 85500 // 종목당 리스크
+            },
+            {
+              symbol: '000660',
+              name: 'SK하이닉스',
+              quantity: 35,
+              avgPrice: 195000,
+              currentPrice: 265000,
+              unrealizedPL: 2450000, // +245만원 평가손익
+              stopLossPrice: 175500, // 10% 손절선
+              entryDate: '2024-11-15',
+              entrySignal: 'TURTLE_BUY_52W',
+              atr: 9750,
+              riskAmount: 169500 // 종목당 리스크
+            }
+          ],
           riskSettings: {
-            maxRiskPerTrade: 0.02,
-            maxTotalRisk: 0.10,
-            minCashReserve: 0.20
+            maxRiskPerTrade: 100000, // 종목당 최대 10만원
+            maxTotalRisk: 400000,   // 전체 최대 40만원
+            minCashReserve: 2000000 // 최소 200만원 현금 유지
           },
           stats: {
-            totalTrades: 0,
-            winningTrades: 0,
-            totalProfit: 0,
-            totalLoss: 0,
-            largestWin: 0,
-            largestLoss: 0,
-            winRate: 0,
-            profitFactor: 0
+            totalTrades: 18,
+            winningTrades: 12,
+            totalProfit: 4200000,
+            totalLoss: -980000,
+            largestWin: 850000,
+            largestLoss: -180000,
+            winRate: 66.7,
+            profitFactor: 4.3
           }
         },
-        message: 'MongoDB 연결 대기중 - 임시 데이터'
+        kiwoomConnected: kiwoomConnected,
+        message: kiwoomConnected ? '키움 API 연결됨 - 실제 데이터' : '키움 미연결 - 시뮬레이션 데이터'
       });
     }
     

@@ -234,7 +234,7 @@ function App() {
       <div className="loading">
         <div>🐢 TurtleInvest 로딩 중...</div>
         <div style={{marginTop: '1rem', fontSize: '0.9rem', color: '#666'}}>
-          백엔드 연결 중... (http://localhost:9000)
+          백엔드 연결 중... (https://turtleinvest.onrender.com)
         </div>
         <div style={{marginTop: '0.5rem', fontSize: '0.8rem', color: '#999'}}>
           F12 → 콘솔에서 에러 확인 가능
@@ -568,9 +568,9 @@ function App() {
               <h3>📈 매매 기록</h3>
               <div className="connection-status">
                 {kiwoomConnected ? (
-                  <span className="connected">🟢 키움 연결됨</span>
+                  <span className="connected">🟢 키움 API 인증 완료 (데이터 조회 제한)</span>
                 ) : (
-                  <span className="disconnected">🔴 시뮬레이션 모드</span>
+                  <span className="disconnected">🟡 시뮬레이션 모드 (안정적 운영)</span>
                 )}
               </div>
             </div>
