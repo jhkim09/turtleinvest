@@ -47,11 +47,15 @@ class KiwoomService {
       if (response.data && response.data.output) {
         const stockData = response.data.output;
         
-        // 주요 정보 추출
+        // 주요 정보 추출 (정확한 필드명 사용)
         const result = {
           stockCode: stockCode,
-          name: stockData.hts_kor_isnm || '종목명없음', // 종목명
-          currentPrice: parseInt(stockData.stck_prpr || '0'), // 현재가
+          name: stockData.hts_kor_isnm || stockData.krlnm || '종목명없음', // 종목명
+          currentPrice: parseInt(stockData.cur_prc || '0'), // 현재가/종가
+          basePrice: parseInt(stockData.base_pric || '0'), // 기준가
+          openPrice: parseInt(stockData.open_pric || '0'), // 시가  
+          highPrice: parseInt(stockData.high_pric || '0'), // 고가
+          lowPrice: parseInt(stockData.low_pric || '0'), // 저가
           marketCap: parseInt(stockData.mktcap || '0'), // 시가총액 (억원)
           sharesOutstanding: parseInt(stockData.lstn_stcn || '0'), // 상장주식수
           per: parseFloat(stockData.per || '0'), // PER
@@ -61,8 +65,8 @@ class KiwoomService {
           volume: parseInt(stockData.acml_vol || '0'), // 거래량
           changeRate: parseFloat(stockData.prdy_ctrt || '0'), // 등락률
           changePrice: parseInt(stockData.prdy_vrss || '0'), // 등락가
-          high52w: parseInt(stockData.w52_hgpr || '0'), // 52주 최고가
-          low52w: parseInt(stockData.w52_lwpr || '0'), // 52주 최저가
+          upperLimit: parseInt(stockData.upl_pric || '0'), // 상한가
+          lowerLimit: parseInt(stockData.lst_pric || '0'), // 하한가
           dataSource: 'KIWOOM_REST',
           timestamp: new Date().toISOString()
         };
@@ -173,9 +177,9 @@ class KiwoomService {
         timeout: 5000 // 짧은 타임아웃
       });
 
-      if (response.data?.output?.stck_prpr) {
-        const currentPrice = parseInt(response.data.output.stck_prpr);
-        console.log(`💰 ${stockCode} 키움 현재가: ${currentPrice}원`);
+      if (response.data?.output?.cur_prc) {
+        const currentPrice = parseInt(response.data.output.cur_prc);
+        console.log(`💰 ${stockCode} 키움 종가: ${currentPrice}원`);
         return currentPrice;
       }
 
