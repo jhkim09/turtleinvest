@@ -90,9 +90,15 @@ app.get('/api/health', async (req, res) => {
       },
       endpoints: {
         signals: '/api/signals/*',
-        financialData: '/api/financial-data/*',
+        financialData: '/api/financial-data/*', 
+        superstocks: '/api/superstocks/*',
         test500: '/api/test500/*',
         positions: '/api/positions/*'
+      },
+      newFeatures: {
+        superstocksSearch: '/api/superstocks/search',
+        kiwoomSearch: '/api/superstocks/kiwoom-search',
+        cacheStatus: '/api/superstocks/cache-status'
       },
       timestamp: new Date().toISOString()
     });
