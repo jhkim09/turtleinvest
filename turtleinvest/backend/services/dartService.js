@@ -244,7 +244,7 @@ class DartService {
     }
   }
   
-  // 상장주식수 조회 (DART API - 발행주식수 정보)
+  // 상장주식수 조회 (개선된 DART API - 주식 총수 현황)
   async getSharesOutstanding(stockCode, year = 2024) {
     try {
       // 하드코딩된 주요 종목 상장주식수 (2024년 기준, 단위: 주)
@@ -286,35 +286,129 @@ class DartService {
       
       await this.delay(this.rateLimitDelay);
       
-      // 주식발행현황 API 사용
-      const response = await axios.get(`${this.baseURL}/stockSttus.json`, {
-        params: {
-          crtfc_key: this.apiKey,
-          corp_code: corpInfo.corpCode,
-          bsns_year: year.toString(),
-          reprt_code: '11011' // 사업보고서
-        }
-      });
-      
-      if (response.data.status === '000' && response.data.list?.length > 0) {
-        // 보통주 발행주식수 찾기
-        const stockData = response.data.list.find(item => 
-          item.se && (item.se.includes('보통주') || item.se.includes('주식수'))
-        );
+      // 1차 시도: 개선된 주식 총수 현황 API 사용
+      try {
+        console.log(`📊 ${stockCode} 주식 총수 현황 API 사용...`);
         
-        if (stockData && stockData.istc_totqy) {
-          const shares = parseInt(stockData.istc_totqy.replace(/[,]/g, ''));
-          console.log(`📈 ${stockCode} 상장주식수: ${shares.toLocaleString()}주`);
-          return shares;
+        const response = await axios.get(`${this.baseURL}/stockTotqySttus.json`, {
+          params: {
+            crtfc_key: this.apiKey,
+            corp_code: corpInfo.corpCode,
+            bsns_year: year.toString(),
+            reprt_code: '11011' // 사업보고서
+          }
+        });
+        
+        if (response.data.status === '000' && response.data.list?.length > 0) {
+          // 유가증권(Y) 또는 코스닥(K)인 보통주 찾기
+          const stockData = response.data.list.find(item => 
+            item.corp_cls && (item.corp_cls === 'Y' || item.corp_cls === 'K') &&
+            item.se && (item.se.includes('보통주') || item.se.includes('합계') && !item.se.includes('우선주'))
+          );
+          
+          if (stockData) {
+            let shares = null;
+            
+            // 1. 유통주식수 우선 사용 (자기주식 제외)
+            if (stockData.distb_stock_co && parseInt(stockData.distb_stock_co.replace(/[,]/g, '')) > 0) {
+              shares = parseInt(stockData.distb_stock_co.replace(/[,]/g, ''));
+              console.log(`📈 ${stockCode} 유통주식수: ${shares.toLocaleString()}주`);
+            }
+            // 2. 발행주식수 사용 (자기주식 포함)
+            else if (stockData.istc_totqy && parseInt(stockData.istc_totqy.replace(/[,]/g, '')) > 0) {
+              shares = parseInt(stockData.istc_totqy.replace(/[,]/g, ''));
+              console.log(`📈 ${stockCode} 발행주식수: ${shares.toLocaleString()}주`);
+            }
+            
+            if (shares && shares > 0) {
+              return shares;
+            }
+          }
         }
+        
+      } catch (stockTotqyError) {
+        console.log(`⚠️ ${stockCode} 주식 총수 현황 API 실패: ${stockTotqyError.message}`);
       }
       
-      console.log(`⚠️ ${stockCode} 상장주식수 정보 없음`);
+      // 2차 시도: 기존 주식발행현황 API 사용 (Fallback)
+      try {
+        console.log(`📊 ${stockCode} Fallback - 기존 주식발행현황 API 사용...`);
+        
+        const response = await axios.get(`${this.baseURL}/stockSttus.json`, {
+          params: {
+            crtfc_key: this.apiKey,
+            corp_code: corpInfo.corpCode,
+            bsns_year: year.toString(),
+            reprt_code: '11011'
+          }
+        });
+        
+        if (response.data.status === '000' && response.data.list?.length > 0) {
+          const stockData = response.data.list.find(item => 
+            item.se && (item.se.includes('보통주') || item.se.includes('주식수'))
+          );
+          
+          if (stockData && stockData.istc_totqy) {
+            const shares = parseInt(stockData.istc_totqy.replace(/[,]/g, ''));
+            console.log(`📈 ${stockCode} Fallback 상장주식수: ${shares.toLocaleString()}주`);
+            return shares;
+          }
+        }
+        
+      } catch (fallbackError) {
+        console.log(`⚠️ ${stockCode} Fallback API도 실패: ${fallbackError.message}`);
+      }
+      
+      console.log(`❌ ${stockCode} 모든 방법으로 상장주식수 조회 실패`);
       return null;
       
     } catch (error) {
       console.error(`상장주식수 조회 실패 (${stockCode}):`, error.message);
       return null;
+    }
+  }
+
+  // 다중 종목 상장주식수 일괄 조회 (성능 최적화용)
+  async getBulkSharesOutstanding(stockCodes, year = 2024) {
+    try {
+      console.log(`📊 ${stockCodes.length}개 종목 상장주식수 일괄 조회...`);
+      
+      const results = new Map();
+      const batchSize = 15; // 작은 배치로 안정적 처리
+      
+      for (let i = 0; i < stockCodes.length; i += batchSize) {
+        const batch = stockCodes.slice(i, i + batchSize);
+        console.log(`📦 배치 ${Math.floor(i/batchSize) + 1}/${Math.ceil(stockCodes.length/batchSize)} (${batch.length}개 종목)`);
+        
+        const batchPromises = batch.map(async (stockCode) => {
+          try {
+            const shares = await this.getSharesOutstanding(stockCode, year);
+            return { stockCode, shares, error: null };
+          } catch (error) {
+            return { stockCode, shares: null, error: error.message };
+          }
+        });
+        
+        const batchResults = await Promise.all(batchPromises);
+        
+        batchResults.forEach(result => {
+          if (result.shares) {
+            results.set(result.stockCode, result.shares);
+          }
+        });
+        
+        // 배치 간 대기 (API Rate Limit)
+        if (i + batchSize < stockCodes.length) {
+          await this.delay(1000);
+        }
+      }
+      
+      console.log(`✅ 상장주식수 일괄 조회 완료: ${results.size}개 성공`);
+      return results;
+      
+    } catch (error) {
+      console.error('상장주식수 일괄 조회 실패:', error.message);
+      throw error;
     }
   }
   
@@ -538,6 +632,194 @@ class DartService {
       console.log(`⚠️ ${stockCode} Fallback으로 기존 API 사용`);
       return await this.getThreeYearFinancialsLegacy(stockCode);
     }
+  }
+
+  // 신규: 다중 회사 동시 조회 API (슈퍼스톡스 검색 최적화용)
+  async getBulkFinancialData(stockCodes, batchSize = 20) {
+    try {
+      console.log(`🚀 Bulk 재무데이터 수집 시작: ${stockCodes.length}개 종목, 배치크기: ${batchSize}`);
+      
+      const results = new Map();
+      const failed = [];
+      
+      // 배치 단위로 처리
+      for (let i = 0; i < stockCodes.length; i += batchSize) {
+        const batch = stockCodes.slice(i, i + batchSize);
+        console.log(`📦 배치 ${Math.floor(i/batchSize) + 1}/${Math.ceil(stockCodes.length/batchSize)} 처리 중... (${batch.length}개 종목)`);
+        
+        const batchResults = await this.processBulkBatch(batch);
+        
+        // 결과 병합
+        batchResults.successes.forEach((data, stockCode) => {
+          results.set(stockCode, data);
+        });
+        failed.push(...batchResults.failures);
+        
+        // Rate limit 준수 (배치 간 대기)
+        if (i + batchSize < stockCodes.length) {
+          await this.delay(1000); // 1초 대기
+        }
+      }
+      
+      console.log(`✅ Bulk 수집 완료: 성공 ${results.size}개, 실패 ${failed.length}개`);
+      
+      return {
+        successes: results,
+        failures: failed,
+        summary: {
+          total: stockCodes.length,
+          success: results.size,
+          failed: failed.length,
+          successRate: ((results.size / stockCodes.length) * 100).toFixed(1) + '%'
+        }
+      };
+      
+    } catch (error) {
+      console.error('Bulk 재무데이터 수집 실패:', error.message);
+      throw error;
+    }
+  }
+
+  // Bulk 배치 처리 (동일한 기업코드들을 그룹핑하여 Multi API 활용)
+  async processBulkBatch(stockCodes) {
+    const successes = new Map();
+    const failures = [];
+    
+    // 1. 모든 종목의 기업코드 조회 (병렬 처리)
+    const corpCodePromises = stockCodes.map(async (stockCode) => {
+      try {
+        const corpInfo = await this.getCorpCode(stockCode);
+        return { stockCode, corpInfo };
+      } catch (error) {
+        return { stockCode, error: error.message };
+      }
+    });
+    
+    const corpCodeResults = await Promise.all(corpCodePromises);
+    
+    // 2. 성공/실패 분리
+    const validStocks = [];
+    corpCodeResults.forEach(result => {
+      if (result.corpInfo) {
+        validStocks.push(result);
+      } else {
+        failures.push({
+          stockCode: result.stockCode,
+          reason: result.error || '기업코드 조회 실패'
+        });
+      }
+    });
+    
+    console.log(`📋 기업코드 조회 완료: 성공 ${validStocks.length}개, 실패 ${failures.length}개`);
+    
+    // 3. 각 종목별로 Multi Account API 호출 (여전히 개별 호출이지만 최적화됨)
+    const financialPromises = validStocks.map(async ({ stockCode, corpInfo }) => {
+      try {
+        await this.delay(this.rateLimitDelay); // Rate limit
+        
+        const response = await axios.get(`${this.baseURL}/fnlttMultiAcnt.json`, {
+          params: {
+            crtfc_key: this.apiKey,
+            corp_code: corpInfo.corpCode,
+            bsns_year: '2024',
+            reprt_code: '11011'
+          },
+          timeout: 8000 // 더 짧은 timeout으로 빠른 실패 처리
+        });
+        
+        if (response.data.status === '000' && response.data.list?.length > 0) {
+          const financialData = this.parseMultiAccountData(response.data.list);
+          
+          if (financialData.revenue > 0) { // 유효한 데이터만
+            return {
+              stockCode,
+              data: {
+                stockCode,
+                name: corpInfo.corpName,
+                revenue: financialData.revenue,
+                netIncome: financialData.netIncome,
+                revenueGrowth3Y: financialData.revenueGrowth,
+                netIncomeGrowth3Y: financialData.netIncomeGrowth,
+                dataSource: 'DART_MULTI',
+                lastUpdated: new Date().toISOString(),
+                corpCode: corpInfo.corpCode
+              }
+            };
+          }
+        }
+        
+        return { stockCode, error: 'Multi API 데이터 없음' };
+        
+      } catch (error) {
+        return { 
+          stockCode, 
+          error: `Multi API 호출 실패: ${error.message}` 
+        };
+      }
+    });
+    
+    // 4. 병렬 실행 및 결과 처리
+    const financialResults = await Promise.all(financialPromises);
+    
+    financialResults.forEach(result => {
+      if (result.data) {
+        successes.set(result.stockCode, result.data);
+      } else {
+        failures.push({
+          stockCode: result.stockCode,
+          reason: result.error
+        });
+      }
+    });
+    
+    return { successes, failures };
+  }
+
+  // Multi Account API 응답 데이터 파싱
+  parseMultiAccountData(dataList) {
+    const result = {
+      revenue: 0,
+      netIncome: 0,
+      revenueHistory: [],
+      netIncomeHistory: [],
+      revenueGrowth: 0,
+      netIncomeGrowth: 0
+    };
+    
+    // 매출액과 당기순이익 데이터 찾기
+    const revenueData = dataList.find(item => 
+      item.account_nm === '매출액' && item.sj_nm === '손익계산서'
+    );
+    
+    const netIncomeData = dataList.find(item => 
+      item.account_nm === '당기순이익' && item.sj_nm === '손익계산서'
+    );
+    
+    if (revenueData) {
+      // 3개년 매출 데이터 (단위: 억원)
+      const revenues = [];
+      if (revenueData.bfefrmtrm_amount) revenues.push(parseInt(revenueData.bfefrmtrm_amount.replace(/,/g, '')) / 100000000);
+      if (revenueData.frmtrm_amount) revenues.push(parseInt(revenueData.frmtrm_amount.replace(/,/g, '')) / 100000000);
+      if (revenueData.thstrm_amount) revenues.push(parseInt(revenueData.thstrm_amount.replace(/,/g, '')) / 100000000);
+      
+      result.revenueHistory = revenues;
+      result.revenue = revenues[revenues.length - 1] || 0; // 최신연도
+      result.revenueGrowth = this.calculateGrowthRate(revenues);
+    }
+    
+    if (netIncomeData) {
+      // 3개년 순이익 데이터 (단위: 억원)
+      const netIncomes = [];
+      if (netIncomeData.bfefrmtrm_amount) netIncomes.push(parseInt(netIncomeData.bfefrmtrm_amount.replace(/,/g, '')) / 100000000);
+      if (netIncomeData.frmtrm_amount) netIncomes.push(parseInt(netIncomeData.frmtrm_amount.replace(/,/g, '')) / 100000000);
+      if (netIncomeData.thstrm_amount) netIncomes.push(parseInt(netIncomeData.thstrm_amount.replace(/,/g, '')) / 100000000);
+      
+      result.netIncomeHistory = netIncomes;
+      result.netIncome = netIncomes[netIncomes.length - 1] || 0; // 최신연도
+      result.netIncomeGrowth = this.calculateGrowthRate(netIncomes);
+    }
+    
+    return result;
   }
   
   // 기존 방식 (Fallback용)

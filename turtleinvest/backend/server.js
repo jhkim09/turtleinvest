@@ -15,6 +15,7 @@ const financialDataRoutes = require('./routes/financialData');
 const test500Routes = require('./routes/test500');
 const testCorpCodeRoutes = require('./routes/testCorpCode');
 const testDataSourcesRoutes = require('./routes/testDataSources');
+const superstocksRoutes = require('./routes/superstocks');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -69,6 +70,7 @@ app.use('/api/financial-data', financialDataRoutes);
 app.use('/api/test500', test500Routes);
 app.use('/api/test-corp-code', testCorpCodeRoutes);
 app.use('/api/test-data-sources', testDataSourcesRoutes);
+app.use('/api/superstocks', superstocksRoutes);
 
 // Health Check (향상된 버전)
 app.get('/api/health', async (req, res) => {

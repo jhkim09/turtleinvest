@@ -11,6 +11,140 @@ class KiwoomService {
     this.useMock = false; // 실전 서버 사용
   }
   
+  // 주식 기본정보 조회 (ka10001) - 신규 추가
+  async getStockInfo(stockCode) {
+    try {
+      if (!this.isConnected) {
+        console.log(`🔐 ${stockCode} 조회를 위한 키움 API 인증 필요...`);
+        const authenticated = await this.authenticate(
+          process.env.KIWOOM_APP_KEY, 
+          process.env.KIWOOM_SECRET_KEY
+        );
+        if (!authenticated) {
+          throw new Error('키움 API 인증 실패');
+        }
+      }
+
+      console.log(`📊 ${stockCode} 키움 REST API로 주식정보 조회...`);
+
+      const url = `${this.useMock ? this.mockURL : this.baseURL}/v1/market/trade/ka10001`;
+      
+      const response = await axios.post(url, {
+        stk_cd: stockCode.padStart(6, '0') // 6자리 종목코드
+      }, {
+        headers: {
+          'Content-Type': 'application/json;charset=UTF-8',
+          'Authorization': `Bearer ${this.accessToken}`,
+          'appkey': process.env.KIWOOM_APP_KEY,
+          'appsecret': process.env.KIWOOM_SECRET_KEY,
+          'custtype': 'P', // 개인
+          'tr_id': 'ka10001', // 주식기본정보
+          'tr_cont': 'N' // 연속조회 없음
+        },
+        timeout: 10000
+      });
+
+      if (response.data && response.data.output) {
+        const stockData = response.data.output;
+        
+        // 주요 정보 추출
+        const result = {
+          stockCode: stockCode,
+          name: stockData.hts_kor_isnm || '종목명없음', // 종목명
+          currentPrice: parseInt(stockData.stck_prpr || '0'), // 현재가
+          marketCap: parseInt(stockData.mktcap || '0'), // 시가총액 (억원)
+          sharesOutstanding: parseInt(stockData.lstn_stcn || '0'), // 상장주식수
+          per: parseFloat(stockData.per || '0'), // PER
+          eps: parseInt(stockData.eps || '0'), // EPS
+          pbr: parseFloat(stockData.pbr || '0'), // PBR
+          roe: parseFloat(stockData.roe || '0'), // ROE
+          volume: parseInt(stockData.acml_vol || '0'), // 거래량
+          changeRate: parseFloat(stockData.prdy_ctrt || '0'), // 등락률
+          changePrice: parseInt(stockData.prdy_vrss || '0'), // 등락가
+          high52w: parseInt(stockData.w52_hgpr || '0'), // 52주 최고가
+          low52w: parseInt(stockData.w52_lwpr || '0'), // 52주 최저가
+          dataSource: 'KIWOOM_REST',
+          timestamp: new Date().toISOString()
+        };
+
+        console.log(`✅ ${stockCode} 키움 정보: ${result.name}, 현재가 ${result.currentPrice}원, 시총 ${result.marketCap}억원, 상장주식수 ${result.sharesOutstanding?.toLocaleString()}주`);
+        
+        return result;
+      }
+
+      console.log(`❌ ${stockCode} 키움 API 응답 데이터 없음`);
+      return null;
+
+    } catch (error) {
+      console.error(`❌ ${stockCode} 키움 주식정보 조회 실패:`, error.message);
+      
+      if (error.response) {
+        console.error(`   HTTP ${error.response.status}:`, error.response.data);
+      }
+      
+      return null;
+    }
+  }
+
+  // 다중 종목 정보 일괄 조회 (배치 처리)
+  async getBulkStockInfo(stockCodes, batchSize = 10) {
+    try {
+      console.log(`🚀 키움 REST API로 ${stockCodes.length}개 종목 일괄 조회...`);
+      
+      const results = new Map();
+      const errors = [];
+
+      // 배치 단위로 처리
+      for (let i = 0; i < stockCodes.length; i += batchSize) {
+        const batch = stockCodes.slice(i, i + batchSize);
+        console.log(`📦 배치 ${Math.floor(i/batchSize) + 1}/${Math.ceil(stockCodes.length/batchSize)} (${batch.length}개 종목)`);
+
+        const batchPromises = batch.map(async (stockCode) => {
+          try {
+            const stockInfo = await this.getStockInfo(stockCode);
+            return { stockCode, data: stockInfo, error: null };
+          } catch (error) {
+            return { stockCode, data: null, error: error.message };
+          }
+        });
+
+        const batchResults = await Promise.all(batchPromises);
+
+        // 결과 처리
+        batchResults.forEach(result => {
+          if (result.data) {
+            results.set(result.stockCode, result.data);
+          } else {
+            errors.push({ stockCode: result.stockCode, error: result.error });
+          }
+        });
+
+        // API Rate Limit 고려 (배치 간 대기)
+        if (i + batchSize < stockCodes.length) {
+          console.log('⏳ 1초 대기...');
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+
+      console.log(`✅ 키움 일괄 조회 완료: 성공 ${results.size}개, 실패 ${errors.length}개`);
+
+      return {
+        successes: results,
+        failures: errors,
+        summary: {
+          total: stockCodes.length,
+          success: results.size,
+          failed: errors.length,
+          successRate: ((results.size / stockCodes.length) * 100).toFixed(1) + '%'
+        }
+      };
+
+    } catch (error) {
+      console.error('❌ 키움 일괄 조회 실패:', error.message);
+      throw error;
+    }
+  }
+
   // OAuth 2.0 토큰 발급
   async authenticate(appKey, secretKey) {
     try {

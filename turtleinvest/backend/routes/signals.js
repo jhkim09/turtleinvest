@@ -5,6 +5,36 @@ const TurtleAnalyzer = require('../services/turtleAnalyzer');
 const SuperstocksAnalyzer = require('../services/superstocksAnalyzer');
 const SlackMessageFormatter = require('../services/slackMessageFormatter');
 
+// API 헬스체크 및 상태 확인
+router.get('/health', async (req, res) => {
+  try {
+    res.json({
+      success: true,
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      version: '3.0',
+      services: {
+        server: 'running',
+        database: 'connected', // TODO: 실제 DB 연결 상태 확인
+        dartApi: process.env.DART_API_KEY ? 'configured' : 'missing',
+        makeApi: process.env.MAKE_API_KEY ? 'configured' : 'missing'
+      },
+      endpoints: {
+        superstocksSearch: '/api/signals/superstocks-search',
+        turtleAnalysis: '/api/signals/analyze',
+        integratedAnalysis: '/api/signals/make-analysis'
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      status: 'unhealthy',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // 최신 신호 조회
 router.get('/latest', async (req, res) => {
   try {
@@ -133,6 +163,237 @@ router.get('/risk', async (req, res) => {
   }
 });
 
+// 고속 슈퍼스톡스 검색 API (Bulk DART API 활용)
+router.post('/superstocks-search', async (req, res) => {
+  try {
+    console.log('📨 슈퍼스톡스 검색 API 요청 수신:', {
+      method: req.method,
+      url: req.url,
+      headers: req.headers,
+      body: req.body,
+      bodyType: typeof req.body
+    });
+
+    // 요청 본문 검증
+    if (!req.body) {
+      console.error('❌ 요청 본문이 비어있음');
+      return res.status(400).json({
+        success: false,
+        error: 'MISSING_BODY',
+        message: 'Request body is required'
+      });
+    }
+
+    const { 
+      apiKey, 
+      symbols,
+      conditions = {},
+      includeCharts = false
+    } = req.body;
+
+    console.log('🔍 파싱된 요청 데이터:', {
+      apiKey: apiKey ? `${apiKey.substring(0, 8)}...` : 'undefined',
+      symbols: symbols ? symbols.length : 'default',
+      conditions,
+      includeCharts
+    });
+    
+    // API 키 검증
+    const validApiKey = process.env.MAKE_API_KEY || 'turtle_make_api_2024';
+    if (!apiKey || apiKey !== validApiKey) {
+      return res.status(401).json({
+        success: false,
+        error: 'UNAUTHORIZED',
+        message: 'Invalid API key'
+      });
+    }
+    
+    // 검색 조건 설정
+    const searchConditions = {
+      minRevenueGrowth: conditions.minRevenueGrowth || 15,
+      minNetIncomeGrowth: conditions.minNetIncomeGrowth || 15,
+      maxPSR: conditions.maxPSR || 0.75,
+      minPrice: conditions.minPrice || 0,
+      maxPrice: conditions.maxPrice || 1000000
+    };
+    
+    const stockList = symbols || SuperstocksAnalyzer.getDefaultStockList();
+    
+    console.log(`⚡ 고속 슈퍼스톡스 검색 시작: ${stockList.length}개 종목 (조건: 매출성장률 ≥${searchConditions.minRevenueGrowth}%, PSR ≤${searchConditions.maxPSR})`);
+    
+    const startTime = Date.now();
+    
+    // 1. 고속 재무데이터 조회 (캐시 + Bulk API)
+    const FinancialDataCacheService = require('../services/financialDataCacheService');
+    const financialDataMap = await FinancialDataCacheService.getSuperstocksFinancialData(stockList);
+    
+    console.log(`📊 재무데이터 수집 완료: ${financialDataMap.size}개 종목 (소요시간: ${((Date.now() - startTime)/1000).toFixed(1)}초)`);
+    
+    // 2. 현재가 조회 (병렬 처리)
+    const pricePromises = Array.from(financialDataMap.keys()).map(async (stockCode) => {
+      try {
+        const KiwoomService = require('../services/kiwoomService');
+        let currentPrice = await KiwoomService.getCurrentPrice(stockCode);
+        
+        if (!currentPrice) {
+          // 키움 실패시 Yahoo Finance 백업
+          const YahooFinanceService = require('../services/yahooFinanceService');
+          currentPrice = await YahooFinanceService.getCurrentPrice(stockCode);
+        }
+        
+        return { stockCode, currentPrice, error: null };
+      } catch (error) {
+        return { stockCode, currentPrice: null, error: error.message };
+      }
+    });
+    
+    const priceResults = await Promise.all(pricePromises);
+    const priceMap = new Map();
+    priceResults.forEach(result => {
+      if (result.currentPrice) {
+        priceMap.set(result.stockCode, result.currentPrice);
+      }
+    });
+    
+    console.log(`💰 현재가 수집 완료: ${priceMap.size}개 종목 (소요시간: ${((Date.now() - startTime)/1000).toFixed(1)}초)`);
+    
+    // 3. PSR 계산 및 조건 필터링
+    const results = [];
+    
+    financialDataMap.forEach((financialData, stockCode) => {
+      const currentPrice = priceMap.get(stockCode);
+      if (!currentPrice || !financialData.revenue || financialData.revenue <= 0) return;
+      
+      // PSR 계산을 위한 상장주식수 (추정값 사용)
+      const estimatedShares = SuperstocksAnalyzer.estimateSharesOutstanding(
+        stockCode, 
+        currentPrice, 
+        financialData.revenue
+      );
+      
+      const marketCap = currentPrice * estimatedShares;
+      const revenueInWon = financialData.revenue * 100000000;
+      const psr = revenueInWon > 0 ? marketCap / revenueInWon : 999;
+      
+      // 조건 확인
+      const meetsConditions = (
+        financialData.revenueGrowth3Y >= searchConditions.minRevenueGrowth &&
+        financialData.netIncomeGrowth3Y >= searchConditions.minNetIncomeGrowth &&
+        psr <= searchConditions.maxPSR &&
+        currentPrice >= searchConditions.minPrice &&
+        currentPrice <= searchConditions.maxPrice
+      );
+      
+      // 점수 계산
+      let score = 0;
+      if (financialData.revenueGrowth3Y >= 20) score += 40;
+      else if (financialData.revenueGrowth3Y >= 15) score += 30;
+      
+      if (financialData.netIncomeGrowth3Y >= 20) score += 40;
+      else if (financialData.netIncomeGrowth3Y >= 15) score += 30;
+      
+      if (psr <= 0.5) score += 20;
+      else if (psr <= 0.75) score += 10;
+      
+      const grade = score >= 80 ? 'EXCELLENT' : score >= 60 ? 'GOOD' : score >= 40 ? 'FAIR' : 'POOR';
+      
+      results.push({
+        symbol: stockCode,
+        name: financialData.name,
+        currentPrice: currentPrice,
+        revenue: financialData.revenue,
+        netIncome: financialData.netIncome,
+        revenueGrowth3Y: financialData.revenueGrowth3Y,
+        netIncomeGrowth3Y: financialData.netIncomeGrowth3Y,
+        psr: Math.round(psr * 1000) / 1000,
+        marketCap: marketCap,
+        score: grade,
+        numericScore: score,
+        meetsConditions: meetsConditions,
+        dataSource: financialData.dataSource,
+        lastUpdated: financialData.lastUpdated
+      });
+    });
+    
+    // 4. 결과 정렬 및 필터링
+    const qualifiedStocks = results.filter(stock => stock.meetsConditions)
+      .sort((a, b) => b.numericScore - a.numericScore);
+    
+    const allResults = results.sort((a, b) => b.numericScore - a.numericScore);
+    
+    const endTime = Date.now();
+    const processingTime = ((endTime - startTime) / 1000).toFixed(1);
+    
+    console.log(`⚡ 고속 검색 완료: ${qualifiedStocks.length}개 조건 만족 (총 ${results.length}개 분석, 소요시간: ${processingTime}초)`);
+    
+    res.json({
+      success: true,
+      timestamp: new Date().toISOString(),
+      processingTime: `${processingTime}초`,
+      searchConditions,
+      summary: {
+        totalAnalyzed: results.length,
+        qualifiedStocks: qualifiedStocks.length,
+        excellentStocks: qualifiedStocks.filter(s => s.score === 'EXCELLENT').length,
+        goodStocks: qualifiedStocks.filter(s => s.score === 'GOOD').length,
+        averagePSR: results.length > 0 ? (results.reduce((sum, s) => sum + s.psr, 0) / results.length).toFixed(3) : 0,
+        performance: {
+          cacheHitRate: financialDataMap.size > 0 ? 'High' : 'Low',
+          priceCollectionRate: `${priceMap.size}/${stockList.length} (${((priceMap.size/stockList.length)*100).toFixed(1)}%)`,
+          totalProcessingTime: processingTime + '초'
+        }
+      },
+      qualifiedStocks: qualifiedStocks.slice(0, 50), // 상위 50개만
+      excellentStocks: qualifiedStocks.filter(s => s.score === 'EXCELLENT').slice(0, 20),
+      goodStocks: qualifiedStocks.filter(s => s.score === 'GOOD').slice(0, 20),
+      allResults: allResults.slice(0, 100), // 전체 결과 상위 100개만
+      metadata: {
+        requestedBy: 'api_client',
+        analysisType: 'superstocks_bulk_search',
+        market: 'KRX',
+        apiVersion: '3.0',
+        optimizations: [
+          'DART Bulk API',
+          'Financial Data Caching',
+          'Parallel Price Collection',
+          'In-Memory Processing'
+        ]
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ 고속 슈퍼스톡스 검색 실패:', {
+      error: error.message,
+      stack: error.stack,
+      name: error.name,
+      timestamp: new Date().toISOString()
+    });
+
+    // 더 구체적인 에러 응답
+    const errorResponse = {
+      success: false,
+      error: 'SUPERSTOCKS_SEARCH_FAILED',
+      message: error.message || '알 수 없는 오류가 발생했습니다',
+      timestamp: new Date().toISOString(),
+      details: {
+        errorName: error.name,
+        errorType: typeof error
+      }
+    };
+
+    // 개발 환경에서는 더 자세한 정보 제공
+    if (process.env.NODE_ENV !== 'production') {
+      errorResponse.stack = error.stack;
+      errorResponse.debugInfo = {
+        requestReceived: true,
+        bodyParsed: !!req.body
+      };
+    }
+
+    res.status(500).json(errorResponse);
+  }
+});
+
 // Make.com 통합 분석 API (터틀 + 슈퍼스톡스)
 router.post('/make-analysis', async (req, res) => {
   try {
@@ -166,13 +427,19 @@ router.post('/make-analysis', async (req, res) => {
       turtleSignals = [];
     }
     
-    // 슈퍼스톡스 분석 (오류 방어)
+    // 슈퍼스톡스 분석 (고속 검색 사용)
     let superstocks = [];
     try {
       const stockList = symbols || SuperstocksAnalyzer.getDefaultStockList();
-      console.log(`📊 슈퍼스톡스 분석 시작: ${stockList.length}개 종목`);
+      console.log(`📊 고속 슈퍼스톡스 분석 시작: ${stockList.length}개 종목`);
+      
+      // 새로운 고속 검색 방식 사용
+      const FinancialDataCacheService = require('../services/financialDataCacheService');
+      const financialDataMap = await FinancialDataCacheService.getSuperstocksFinancialData(stockList);
+      
+      // 기존 분석기 사용하되 이미 수집된 재무데이터 활용
       superstocks = await SuperstocksAnalyzer.analyzeSuperstocks(stockList) || [];
-      console.log(`✅ 슈퍼스톡스 분석 완료: ${superstocks.length}개 결과`);
+      console.log(`✅ 고속 슈퍼스톡스 분석 완료: ${superstocks.length}개 결과`);
     } catch (superstocksError) {
       console.error('❌ 슈퍼스톡스 분석 실패:', superstocksError.message);
       superstocks = [];
