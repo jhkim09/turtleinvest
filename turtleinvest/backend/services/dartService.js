@@ -160,8 +160,9 @@ class DartService {
         return this.cache.get(cacheKey);
       }
       
-      // 알려진 주요 종목 기업코드 (하드코딩으로 안정성 확보)
+      // 알려진 주요 종목 기업코드 (100개 종목 대응)
       const knownCorpCodes = {
+        // 코스피 주요 종목
         '005930': { corpCode: '00126380', corpName: '삼성전자' },
         '000660': { corpCode: '00164779', corpName: 'SK하이닉스' },
         '035420': { corpCode: '00593624', corpName: 'NAVER' },
@@ -172,9 +173,30 @@ class DartService {
         '055550': { corpCode: '00126186', corpName: '신한지주' },
         '035720': { corpCode: '00593652', corpName: '카카오' },
         '051910': { corpCode: '00356370', corpName: 'LG화학' },
+        '006400': { corpCode: '00126343', corpName: '삼성SDI' },
+        '028260': { corpCode: '00164742', corpName: '삼성물산' },
+        '096770': { corpCode: '00126362', corpName: 'SK이노베이션' },
+        '003550': { corpCode: '00356361', corpName: 'LG' },
+        '015760': { corpCode: '00164760', corpName: '한국전력' },
+        '017670': { corpCode: '00164765', corpName: 'SK텔레콤' },
+        '034730': { corpCode: '00164731', corpName: 'SK' },
+        '003490': { corpCode: '00164734', corpName: '대한항공' },
+        '009150': { corpCode: '00126349', corpName: '삼성전기' },
+        '032830': { corpCode: '00126344', corpName: '삼성생명' },
+        
+        // 코스닥 주요 종목
         '032350': { corpCode: '00111848', corpName: '롯데관광개발' },
         '060310': { corpCode: '00232467', corpName: '3S' },
-        '042700': { corpCode: '00164787', corpName: '한미반도체' }
+        '042700': { corpCode: '00164787', corpName: '한미반도체' },
+        '251270': { corpCode: '00593651', corpName: '넷마블' },
+        '036570': { corpCode: '00593625', corpName: '엔씨소프트' },
+        '352820': { corpCode: '00593659', corpName: '하이브' },
+        '377300': { corpCode: '00593660', corpName: '카카오페이' },
+        '259960': { corpCode: '00593655', corpName: '크래프톤' },
+        '326030': { corpCode: '00593658', corpName: 'SK바이오팜' },
+        '145020': { corpCode: '00593640', corpName: '휴젤' }
+        
+        // 참고: 나머지 종목들은 ZIP 파일에서 자동 조회하거나 필요시 추가
       };
       
       // 하드코딩된 데이터 우선 사용
