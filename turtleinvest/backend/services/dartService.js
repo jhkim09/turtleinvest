@@ -4,7 +4,7 @@ class DartService {
   
   constructor() {
     this.baseURL = 'https://opendart.fss.or.kr/api';
-    this.apiKey = process.env.DART_API_KEY || '';
+    this.apiKey = '';
     this.cache = new Map(); // 캐시로 API 호출 최소화
     this.rateLimitDelay = 200; // API 호출 간격 (밀리초)
     
@@ -13,6 +13,19 @@ class DartService {
     this.lastCorpCodeUpdate = null;
     this.corpCodeCacheExpiry = 24 * 60 * 60 * 1000; // 24시간 캐시
     this.isLoading = false; // 동시 로딩 방지
+    
+    // 환경변수에서 API 키 로드
+    this.loadApiKey();
+  }
+  
+  // API 키 로드 함수
+  loadApiKey() {
+    if (typeof process !== 'undefined' && process.env) {
+      this.apiKey = process.env.DART_API_KEY || '';
+      console.log(`🔑 DART API Key 로드: ${this.apiKey ? '성공' : '실패'} (길이: ${this.apiKey.length})`);
+    } else {
+      console.warn('⚠️ process.env를 사용할 수 없습니다');
+    }
   }
   
   // 전체 기업코드 데이터 로드 (24시간 캐시)
@@ -52,22 +65,18 @@ class DartService {
       
       let xmlText;
       
-      // ZIP 파일 처리
-      try {
-        const JSZip = require('jszip');
-        const zip = new JSZip();
-        const contents = await zip.loadAsync(response.data);
-        const xmlFile = Object.keys(contents.files)[0];
-        if (xmlFile) {
-          xmlText = await contents.files[xmlFile].async('text');
-          console.log(`📦 ZIP에서 XML 추출: ${xmlFile}, 크기: ${xmlText.length}`);
-        } else {
-          throw new Error('ZIP 파일 내 XML 없음');
-        }
-      } catch (zipError) {
-        xmlText = response.data.toString();
-        console.log(`📄 일반 텍스트로 처리, 크기: ${xmlText.length}`);
+      // ZIP 파일 처리 (DART API는 ZIP 형태로 제공)
+      const JSZip = require('jszip');
+      const zip = new JSZip();
+      const contents = await zip.loadAsync(response.data);
+      const xmlFile = Object.keys(contents.files)[0];
+      
+      if (!xmlFile) {
+        throw new Error('ZIP 파일 내 XML 파일을 찾을 수 없음');
       }
+      
+      xmlText = await contents.files[xmlFile].async('text');
+      console.log(`📦 ZIP에서 XML 추출: ${xmlFile}, 크기: ${xmlText.length.toLocaleString()}`);
       
       // XML 실제 구조 분석 (처음 2000자)
       console.log(`🔍 XML 구조 샘플:\n${xmlText.substring(0, 2000)}`);
@@ -143,7 +152,7 @@ class DartService {
     }
   }
   
-  // 기업 고유번호 조회 (종목코드 → 기업코드 변환)
+  // 기업 고유번호 조회 (종목코드 → 기업코드 변환) - 직접 조회 방식
   async getCorpCode(stockCode) {
     try {
       const cacheKey = `corp_${stockCode}`;
@@ -151,27 +160,51 @@ class DartService {
         return this.cache.get(cacheKey);
       }
       
-      // 전체 기업코드 데이터 확인
-      const allCorpCodes = await this.loadAllCorpCodes();
-      if (!allCorpCodes) {
-        console.log(`❌ ${stockCode} 전체 기업코드 데이터 로딩 실패`);
-        return null;
-      }
+      // 알려진 주요 종목 기업코드 (하드코딩으로 안정성 확보)
+      const knownCorpCodes = {
+        '005930': { corpCode: '00126380', corpName: '삼성전자' },
+        '000660': { corpCode: '00164779', corpName: 'SK하이닉스' },
+        '035420': { corpCode: '00593624', corpName: 'NAVER' },
+        '005380': { corpCode: '00164742', corpName: '현대차' },
+        '012330': { corpCode: '00268317', corpName: '현대모비스' },
+        '000270': { corpCode: '00164509', corpName: '기아' },
+        '105560': { corpCode: '00103522', corpName: 'KB금융' },
+        '055550': { corpCode: '00126186', corpName: '신한지주' },
+        '035720': { corpCode: '00593652', corpName: '카카오' },
+        '051910': { corpCode: '00356370', corpName: 'LG화학' },
+        '032350': { corpCode: '00111848', corpName: '롯데관광개발' },
+        '060310': { corpCode: '00232467', corpName: '3S' },
+        '042700': { corpCode: '00164787', corpName: '한미반도체' }
+      };
       
-      const result = allCorpCodes.get(stockCode);
-      if (result) {
-        console.log(`✅ ${stockCode} → ${result.corpCode}, ${result.corpName}`);
+      // 하드코딩된 데이터 우선 사용
+      if (knownCorpCodes[stockCode]) {
+        const result = knownCorpCodes[stockCode];
+        console.log(`✅ ${stockCode} → ${result.corpCode}, ${result.corpName} (하드코딩)`);
         this.cache.set(cacheKey, result);
         return result;
       }
       
+      // 하드코딩에 없으면 ZIP 파일 로딩 시도 (실패해도 계속 진행)
+      try {
+        const allCorpCodes = await this.loadAllCorpCodes();
+        if (allCorpCodes) {
+          const result = allCorpCodes.get(stockCode);
+          if (result) {
+            console.log(`✅ ${stockCode} → ${result.corpCode}, ${result.corpName} (DART API)`);
+            this.cache.set(cacheKey, result);
+            return result;
+          }
+        }
+      } catch (zipError) {
+        console.log(`⚠️ ${stockCode} ZIP 로딩 실패, 하드코딩 데이터로 대체 시도`);
+      }
+      
+      console.log(`❌ ${stockCode} 기업코드를 찾을 수 없음`);
       return null;
       
     } catch (error) {
       console.error(`❌ 기업코드 조회 실패 (${stockCode}):`, error.message);
-      if (error.response) {
-        console.error(`응답 상태: ${error.response.status}, 데이터: ${error.response.data}`);
-      }
       return null;
     }
   }
@@ -234,15 +267,35 @@ class DartService {
       
       await this.delay(this.rateLimitDelay); // Rate limit 준수
       
-      const response = await axios.get(`${this.baseURL}/fnlttSinglAcnt.json`, {
-        params: {
-          crtfc_key: this.apiKey,
-          corp_code: corpInfo.corpCode,
-          bsns_year: year.toString(),
-          reprt_code: reportType, // 11011: 사업보고서
-          fs_div: 'CFS' // CFS: 연결재무제표, OFS: 별도재무제표
-        }
+      const url = `${this.baseURL}/fnlttSinglAcnt.json?crtfc_key=${this.apiKey}&corp_code=${corpInfo.corpCode}&bsns_year=${year}&reprt_code=${reportType}&fs_div=CFS`;
+      
+      console.log(`🔗 DART API 호출 URL: ${url.replace(this.apiKey, this.apiKey.substring(0, 8) + '...')}`);
+      
+      const params = {
+        crtfc_key: this.apiKey,
+        corp_code: corpInfo.corpCode,
+        bsns_year: year.toString(),
+        reprt_code: reportType,
+        fs_div: 'CFS'
+      };
+      
+      console.log(`🔍 실제 전송 파라미터:`, {
+        ...params,
+        crtfc_key: params.crtfc_key ? params.crtfc_key.substring(0, 8) + '...' : 'UNDEFINED'
       });
+      
+      console.log(`🔑 API Key 상태: ${this.apiKey ? '존재함' : '없음'}, 길이: ${this.apiKey?.length}`);
+      
+      if (!this.apiKey) {
+        throw new Error('DART API 키가 설정되지 않았습니다');
+      }
+      
+      const response = await axios.get(`${this.baseURL}/fnlttSinglAcnt.json`, {
+        params: params,
+        timeout: 10000
+      });
+      
+      console.log(`📋 DART API 응답: status=${response.data.status}, message=${response.data.message}`);
       
       if (response.data.status === '000') {
         const result = this.parseFinancialData(response.data.list);
@@ -258,7 +311,7 @@ class DartService {
     }
   }
   
-  // 재무데이터 파싱
+  // 재무데이터 파싱 (개선된 로직)
   parseFinancialData(dataList) {
     const result = {
       revenue: 0,
@@ -268,40 +321,151 @@ class DartService {
       totalEquity: 0
     };
     
+    // 연결재무제표 데이터만 추출 (첫 번째 나타나는 데이터)
+    const seenAccounts = new Set();
+    
     dataList.forEach(item => {
       const accountName = item.account_nm;
       const amount = parseInt(item.thstrm_amount?.replace(/,/g, '') || '0');
       
-      // 매출액 (수익인식기준) - DART는 백만원 단위
-      if (accountName.includes('수익(매출액)') || accountName.includes('매출액')) {
-        result.revenue = amount / 100; // 백만원 → 억원 변환
+      // DART 데이터는 원 단위이므로 억원으로 변환 (÷ 100,000,000)
+      const amountInBillion = amount / 100000000;
+      
+      // 매출액 (첫 번째만)
+      if (accountName === '매출액' && !seenAccounts.has('revenue')) {
+        result.revenue = amountInBillion;
+        seenAccounts.add('revenue');
+        console.log(`📊 매출액: ${result.revenue.toLocaleString()}억원 (${amount.toLocaleString()}원)`);
       }
-      // 당기순이익 - DART는 백만원 단위
-      else if (accountName.includes('당기순이익') || accountName.includes('순이익')) {
-        result.netIncome = amount / 100; // 백만원 → 억원 변환
+      // 당기순이익 (첫 번째만)
+      else if (accountName === '당기순이익' && !seenAccounts.has('netIncome')) {
+        result.netIncome = amountInBillion;
+        seenAccounts.add('netIncome');
+        console.log(`📊 당기순이익: ${result.netIncome.toLocaleString()}억원 (${amount.toLocaleString()}원)`);
       }
-      // 영업이익 - DART는 백만원 단위
-      else if (accountName.includes('영업이익')) {
-        result.operatingIncome = amount / 100; // 백만원 → 억원 변환
+      // 영업이익 (첫 번째만)
+      else if (accountName === '영업이익' && !seenAccounts.has('operatingIncome')) {
+        result.operatingIncome = amountInBillion;
+        seenAccounts.add('operatingIncome');
+        console.log(`📊 영업이익: ${result.operatingIncome.toLocaleString()}억원 (${amount.toLocaleString()}원)`);
       }
-      // 총자산 - DART는 백만원 단위
-      else if (accountName.includes('자산총계') || accountName.includes('총자산')) {
-        result.totalAssets = amount / 100; // 백만원 → 억원 변환
+      // 자산총계 (첫 번째만)
+      else if (accountName === '자산총계' && !seenAccounts.has('totalAssets')) {
+        result.totalAssets = amountInBillion;
+        seenAccounts.add('totalAssets');
+        console.log(`📊 자산총계: ${result.totalAssets.toLocaleString()}억원 (${amount.toLocaleString()}원)`);
       }
-      // 자본총계 - DART는 백만원 단위
-      else if (accountName.includes('자본총계') || accountName.includes('총자본')) {
-        result.totalEquity = amount / 100; // 백만원 → 억원 변환
+      // 자본총계 (첫 번째만)
+      else if (accountName === '자본총계' && !seenAccounts.has('totalEquity')) {
+        result.totalEquity = amountInBillion;
+        seenAccounts.add('totalEquity');
+        console.log(`📊 자본총계: ${result.totalEquity.toLocaleString()}억원 (${amount.toLocaleString()}원)`);
       }
     });
     
     return result;
   }
   
-  // 3개년 재무데이터 조회
+  // 3개년 재무데이터 조회 (Multi Account API 사용)
   async getThreeYearFinancials(stockCode) {
     try {
-      const currentYear = 2024; // 2024년 기준
-      const years = [2022, 2023, 2024]; // 3개년
+      // 기업 고유번호 조회
+      const corpInfo = await this.getCorpCode(stockCode);
+      if (!corpInfo) {
+        throw new Error('기업코드를 찾을 수 없습니다');
+      }
+      
+      await this.delay(this.rateLimitDelay);
+      
+      console.log(`📊 ${stockCode} Multi Account API로 3개년 데이터 조회...`);
+      
+      // Multi Account API 호출 (한 번에 3개년 데이터)
+      const response = await axios.get(`${this.baseURL}/fnlttMultiAcnt.json`, {
+        params: {
+          crtfc_key: this.apiKey,
+          corp_code: corpInfo.corpCode,
+          bsns_year: '2024',
+          reprt_code: '11011' // 사업보고서
+        },
+        timeout: 10000
+      });
+      
+      if (response.data.status !== '000') {
+        throw new Error(`DART API 오류: ${response.data.message}`);
+      }
+      
+      // 연결재무제표 데이터만 추출 (첫 번째 나오는 것)
+      const revenueData = response.data.list?.find(item => 
+        item.account_nm === '매출액' && item.sj_nm === '손익계산서'
+      );
+      
+      const netIncomeData = response.data.list?.find(item => 
+        item.account_nm === '당기순이익' && item.sj_nm === '손익계산서'
+      );
+      
+      if (!revenueData || !netIncomeData) {
+        throw new Error('필수 재무 데이터를 찾을 수 없습니다');
+      }
+      
+      // 3개년 데이터 파싱
+      const financials = [];
+      
+      // 전전기 (2022년)
+      if (revenueData.bfefrmtrm_amount && netIncomeData.bfefrmtrm_amount) {
+        financials.push({
+          year: 2022,
+          revenue: parseInt(revenueData.bfefrmtrm_amount.replace(/,/g, '')) / 100000000,
+          netIncome: parseInt(netIncomeData.bfefrmtrm_amount.replace(/,/g, '')) / 100000000,
+          operatingIncome: 0 // Multi API에서는 영업이익이 별도로 제공되지 않을 수 있음
+        });
+      }
+      
+      // 전기 (2023년)
+      if (revenueData.frmtrm_amount && netIncomeData.frmtrm_amount) {
+        financials.push({
+          year: 2023,
+          revenue: parseInt(revenueData.frmtrm_amount.replace(/,/g, '')) / 100000000,
+          netIncome: parseInt(netIncomeData.frmtrm_amount.replace(/,/g, '')) / 100000000,
+          operatingIncome: 0
+        });
+      }
+      
+      // 당기 (2024년)
+      if (revenueData.thstrm_amount && netIncomeData.thstrm_amount) {
+        financials.push({
+          year: 2024,
+          revenue: parseInt(revenueData.thstrm_amount.replace(/,/g, '')) / 100000000,
+          netIncome: parseInt(netIncomeData.thstrm_amount.replace(/,/g, '')) / 100000000,
+          operatingIncome: 0
+        });
+      }
+      
+      console.log(`✅ ${stockCode} Multi API로 ${financials.length}개년 데이터 수집 완료`);
+      
+      // 매출/순이익 추이 출력
+      if (financials.length >= 3) {
+        const revenues = financials.map(f => f.revenue.toLocaleString()).join(' → ');
+        const netIncomes = financials.map(f => f.netIncome.toLocaleString()).join(' → ');
+        console.log(`📈 매출 추이: ${revenues}억원`);
+        console.log(`📈 순이익 추이: ${netIncomes}억원`);
+      }
+      
+      return financials;
+      
+    } catch (error) {
+      console.error(`Multi Account API 조회 실패 (${stockCode}):`, error.message);
+      
+      // Fallback: 기존 방식으로 시도
+      console.log(`⚠️ ${stockCode} Fallback으로 기존 API 사용`);
+      return await this.getThreeYearFinancialsLegacy(stockCode);
+    }
+  }
+  
+  // 기존 방식 (Fallback용)
+  async getThreeYearFinancialsLegacy(stockCode) {
+    try {
+      const currentYear = 2024;
+      const years = [2022, 2023, 2024];
       
       const financials = [];
       
@@ -315,13 +479,13 @@ class DartService {
             operatingIncome: data.operatingIncome
           });
         }
-        await this.delay(this.rateLimitDelay); // Rate limit 준수
+        await this.delay(this.rateLimitDelay);
       }
       
       return financials;
       
     } catch (error) {
-      console.error(`3개년 재무데이터 조회 실패 (${stockCode}):`, error.message);
+      console.error(`Legacy 3개년 재무데이터 조회 실패 (${stockCode}):`, error.message);
       return [];
     }
   }
@@ -361,8 +525,12 @@ class DartService {
       
       console.log(`✅ ${stockCode}: 매출성장률 ${revenueGrowth}%, 순이익성장률 ${netIncomeGrowth}%`);
       
+      // 기업명 가져오기
+      const corpInfo = await this.getCorpCode(stockCode);
+      
       return {
         stockCode: stockCode,
+        name: corpInfo?.corpName || this.getStockName(stockCode),
         latestYear: financials[financials.length - 1].year,
         revenue: financials[financials.length - 1].revenue,
         netIncome: financials[financials.length - 1].netIncome,

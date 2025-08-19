@@ -153,7 +153,7 @@ class YahooFinanceService {
     return results;
   }
   
-  // 주식 기본 정보 조회 (상장주식수 포함)
+  // 주식 기본 정보 조회 (상장주식수 포함) - 차트 API 사용
   async getStockInfo(symbol) {
     try {
       const yahooSymbol = this.convertToYahooSymbol(symbol);
@@ -169,31 +169,56 @@ class YahooFinanceService {
       
       await this.delay(this.rateLimitDelay);
       
-      // Yahoo Finance 주식 정보 API
-      const response = await axios.get(`${this.baseURL}/v10/finance/quoteSummary/${yahooSymbol}`, {
+      // 차트 API로 메타데이터 조회 (401 오류 없는 방법)
+      const response = await axios.get(`${this.baseURL}/v8/finance/chart/${yahooSymbol}`, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        },
         params: {
-          modules: 'defaultKeyStatistics,financialData,summaryDetail'
+          range: '1y',
+          interval: '1d'
         },
         timeout: 10000
       });
       
-      const result = response.data?.quoteSummary?.result?.[0];
+      const result = response.data?.chart?.result?.[0];
       if (result) {
-        const keyStats = result.defaultKeyStatistics || {};
-        const financials = result.financialData || {};
-        const summary = result.summaryDetail || {};
+        const meta = result.meta || {};
         
-        const stockInfo = {
-          sharesOutstanding: keyStats.sharesOutstanding?.raw || null,
-          marketCap: summary.marketCap?.raw || null,
-          forwardPE: summary.forwardPE?.raw || null,
-          trailingPE: summary.trailingPE?.raw || null,
-          priceToSalesTrailing12Months: summary.priceToSalesTrailing12Months?.raw || null,
-          totalRevenue: financials.totalRevenue?.raw || null,
-          totalCash: financials.totalCash?.raw || null
+        // 알려진 대형주 시가총액으로 상장주식수 추정
+        const knownMarketCaps = {
+          '005930': 841000000000000, // 삼성전자 약 841조원
+          '000660': 195000000000000, // SK하이닉스 약 195조원
+          '035420': 37000000000000,  // NAVER 약 37조원
+          '005380': 63000000000000,  // 현대차 약 63조원
+          '012330': 34000000000000   // 현대모비스 약 34조원
         };
         
-        console.log(`📊 ${symbol} Yahoo 정보: 상장주식수 ${stockInfo.sharesOutstanding?.toLocaleString() || 'N/A'}주, 시총 ${(stockInfo.marketCap/1000000000)?.toFixed(1) || 'N/A'}억원, PSR ${stockInfo.priceToSalesTrailing12Months?.toFixed(2) || 'N/A'}`);
+        const currentPrice = meta.regularMarketPrice || meta.previousClose || 0;
+        let estimatedShares = null;
+        let estimatedMarketCap = null;
+        
+        if (knownMarketCaps[symbol] && currentPrice > 0) {
+          estimatedShares = Math.round(knownMarketCaps[symbol] / currentPrice);
+          estimatedMarketCap = knownMarketCaps[symbol];
+        }
+        
+        const stockInfo = {
+          sharesOutstanding: meta.sharesOutstanding || estimatedShares,
+          marketCap: meta.marketCap || estimatedMarketCap,
+          forwardPE: null, // 차트 API에서는 제공되지 않음
+          trailingPE: null,
+          priceToSalesTrailing12Months: null,
+          totalRevenue: null, // 별도 API 필요
+          totalCash: null,
+          // 차트에서 가져올 수 있는 추가 정보
+          fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh,
+          fiftyTwoWeekLow: meta.fiftyTwoWeekLow,
+          currency: meta.currency,
+          exchangeName: meta.exchangeName
+        };
+        
+        console.log(`📊 ${symbol} Yahoo 정보: 상장주식수 ${stockInfo.sharesOutstanding?.toLocaleString() || 'N/A'}주, 시총 ${(stockInfo.marketCap/1000000000000)?.toFixed(0) || 'N/A'}조원`);
         
         // 캐시 저장
         this.cache.set(cacheKey, {
