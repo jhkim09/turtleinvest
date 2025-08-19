@@ -1,5 +1,6 @@
 const KiwoomService = require('./kiwoomService');
 const DartService = require('./dartService');
+const YahooFinanceService = require('./yahooFinanceService');
 
 class SuperstocksAnalyzer {
   
@@ -71,8 +72,13 @@ class SuperstocksAnalyzer {
     try {
       console.log(`📊 ${symbol} 슈퍼스톡스 분석 시작...`);
       
-      // 1. 현재가 조회 (키움 API)
-      const currentPrice = await KiwoomService.getCurrentPrice(symbol);
+      // 1. 현재가 조회 (Yahoo Finance API - 실제 시장가)
+      const currentPrice = await YahooFinanceService.getCurrentPrice(symbol);
+      
+      if (!currentPrice) {
+        console.log(`❌ ${symbol} 현재가 조회 실패`);
+        return null;
+      }
       
       // 2. DART API로 실제 재무데이터 조회 (Yahoo Finance 보완)
       let financialData;
@@ -82,7 +88,6 @@ class SuperstocksAnalyzer {
           console.log(`⚠️ ${symbol} DART 데이터 없음, Yahoo Finance로 보완 시도`);
           
           // Yahoo Finance에서 재무데이터 보완
-          const YahooFinanceService = require('./yahooFinanceService');
           const yahooInfo = await YahooFinanceService.getStockInfo(symbol);
           if (yahooInfo && yahooInfo.totalRevenue) {
             console.log(`📊 ${symbol} Yahoo Finance 재무데이터 사용`);
@@ -105,7 +110,6 @@ class SuperstocksAnalyzer {
       }
       
       // 4. 실제 상장주식수 조회 (Yahoo Finance 우선, DART 대안)
-      const YahooFinanceService = require('./yahooFinanceService');
       let actualShares = null;
       let yahooInfo = null;
       
