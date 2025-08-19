@@ -30,15 +30,17 @@ router.get('/', async (req, res) => {
       console.log('⚠️ 키움 API 실패, 시뮬레이션 모드 사용');
     }
 
-    // 키움 데이터가 있으면 실제 데이터, 없으면 시뮬레이션
-    if (kiwoomData) {
+    // 키움 데이터가 있으면 실제 데이터 우선 반환
+    if (kiwoomData && kiwoomData.totalAsset) {
+      console.log(`✅ 키움 실제 데이터 반환: 총자산 ${kiwoomData.totalAsset.toLocaleString()}원`);
+      
       return res.json({
         success: true,
         portfolio: {
           userId: userId,
-          currentCash: kiwoomData.cash,
-          totalEquity: kiwoomData.totalAsset,
-          portfolioValue: kiwoomData.totalAsset,
+          currentCash: kiwoomData.cash || 0,
+          totalEquity: kiwoomData.totalAsset || 0,
+          portfolioValue: kiwoomData.totalAsset || 0,
           totalReturn: kiwoomData.totalReturn || 0,
           currentRiskExposure: kiwoomData.riskExposure || 0,
           positions: kiwoomData.positions || [],
