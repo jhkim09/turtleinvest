@@ -111,9 +111,22 @@ class SuperstocksAnalyzer {
           actualShares = yahooInfo.sharesOutstanding;
           console.log(`📊 ${symbol} Yahoo 상장주식수 사용: ${actualShares.toLocaleString()}주`);
           
-          // Yahoo Finance PSR이 있으면 우선 사용
-          if (yahooInfo.priceToSalesTrailing12Months && yahooInfo.priceToSalesTrailing12Months > 0) {
-            console.log(`💡 ${symbol} Yahoo PSR 직접 사용: ${yahooInfo.priceToSalesTrailing12Months.toFixed(3)}`);
+          // Yahoo Finance에서 매출 데이터를 가져와서 현재 주가로 PSR 직접 계산
+          if (yahooInfo.totalRevenue && yahooInfo.totalRevenue > 0) {
+            console.log(`💡 ${symbol} Yahoo 매출데이터로 현재가 기준 PSR 계산`);
+            
+            // 현재 시가총액 계산 (현재가 × 상장주식수)
+            const currentMarketCap = currentPrice * actualShares;
+            
+            // PSR = 현재 시가총액 / 연매출
+            const calculatedPSR = currentMarketCap / yahooInfo.totalRevenue;
+            
+            console.log(`📊 ${symbol} PSR 계산상세:`);
+            console.log(`   현재가: ${currentPrice.toLocaleString()}원`);
+            console.log(`   상장주식수: ${actualShares.toLocaleString()}주`);
+            console.log(`   현재 시총: ${(currentMarketCap/1000000000).toFixed(1)}억원`);
+            console.log(`   연매출: ${(yahooInfo.totalRevenue/1000000000).toFixed(1)}억원`);
+            console.log(`   PSR: ${(currentMarketCap/1000000000).toFixed(1)} ÷ ${(yahooInfo.totalRevenue/1000000000).toFixed(1)} = ${calculatedPSR.toFixed(4)}`);
             
             return {
               symbol: symbol,
@@ -121,16 +134,16 @@ class SuperstocksAnalyzer {
               currentPrice: currentPrice,
               revenueGrowth3Y: financialData.revenueGrowth3Y,
               netIncomeGrowth3Y: financialData.netIncomeGrowth3Y,
-              psr: Math.round(yahooInfo.priceToSalesTrailing12Months * 1000) / 1000,
-              marketCap: yahooInfo.marketCap || currentPrice * actualShares,
-              revenue: financialData.revenue,
+              psr: Math.round(calculatedPSR * 1000) / 1000,
+              marketCap: currentMarketCap,
+              revenue: yahooInfo.totalRevenue / 100000000, // 원 → 억원
               netIncome: financialData.netIncome,
               dataSource: 'YAHOO_HYBRID',
-              score: this.calculateScore(financialData.revenueGrowth3Y, financialData.netIncomeGrowth3Y, yahooInfo.priceToSalesTrailing12Months),
+              score: this.calculateScore(financialData.revenueGrowth3Y, financialData.netIncomeGrowth3Y, calculatedPSR),
               meetsConditions: (
                 financialData.revenueGrowth3Y >= this.minRevenueGrowth &&
                 financialData.netIncomeGrowth3Y >= this.minNetIncomeGrowth &&
-                yahooInfo.priceToSalesTrailing12Months <= this.maxPSR
+                calculatedPSR <= this.maxPSR
               ),
               timestamp: new Date().toISOString()
             };
