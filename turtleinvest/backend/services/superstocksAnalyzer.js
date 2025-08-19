@@ -111,7 +111,11 @@ class SuperstocksAnalyzer {
       const revenueInWon = financialData.revenue * 100000000; // 억원 → 원 변환
       const psr = revenueInWon > 0 ? marketCap / revenueInWon : 999;
       
-      console.log(`📊 ${symbol} PSR = ${marketCap.toLocaleString()} / ${revenueInWon.toLocaleString()} = ${psr.toFixed(6)}`);
+      console.log(`📊 ${symbol} PSR 계산상세:`);
+      console.log(`   시총(원): ${marketCap.toLocaleString()}`);
+      console.log(`   매출(억원): ${financialData.revenue.toLocaleString()}`);
+      console.log(`   매출(원): ${revenueInWon.toLocaleString()}`);
+      console.log(`   PSR: ${marketCap.toLocaleString()} ÷ ${revenueInWon.toLocaleString()} = ${psr.toFixed(6)}`);
       
       // 조건 확인
       const meetsConditions = (
@@ -273,7 +277,7 @@ class SuperstocksAnalyzer {
       '086790': '하나금융지주', '086960': '메디포스트', '035760': 'CJ E&M',
       '079170': '신풍제약', '028050': '삼성엔지니어링', '079430': '현대리바트',
       '131390': '한국선재', '064960': 'SNT모티브', '192820': '코스맥스',
-      '079370': 'KG모빌리언스', '086450': '동국제약', '086520': '에코프로',
+      '079370': 'KG모빌리언스', '086450': '동국제약', '086520': '에코프로', '060310': '3S',
       '226330': '신테카바이오', '178920': '피아이첨단소재',
       '004000': '롯데정밀화학', '000150': '두산', '004560': '현대중공업지주', '001800': '오리온홀딩스',
       
