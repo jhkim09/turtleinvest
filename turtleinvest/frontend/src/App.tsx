@@ -607,6 +607,7 @@ function App() {
                 <table>
                   <thead>
                     <tr>
+                      <th>거래ID</th>
                       <th>종목명</th>
                       <th>구분</th>
                       <th>수량</th>
@@ -619,6 +620,11 @@ function App() {
                   <tbody>
                     {trades.map((trade, index) => (
                       <tr key={index}>
+                        <td>
+                          <small style={{fontFamily: 'monospace', fontSize: '0.8rem'}}>
+                            {trade._id?.substring(0, 8) || `T${index.toString().padStart(3, '0')}`}
+                          </small>
+                        </td>
                         <td>
                           <div>
                             <strong>{trade.name}</strong>
