@@ -318,7 +318,7 @@ class DartService {
     }
   }
   
-  // 재무제표 조회 (단일회사 전체 재무제표)
+  // 재무제표 조회 (단일회사 전체 재무제표) - 다중 연도/보고서 시도
   async getFinancialStatement(stockCode, year = 2024, reportType = '11011') {
     try {
       const cacheKey = `fs_${stockCode}_${year}_${reportType}`;
@@ -372,6 +372,14 @@ class DartService {
         const result = this.parseFinancialData(response.data.list);
         this.cache.set(cacheKey, result);
         return result;
+      } else if (response.data.status === '013' && year === 2024) {
+        // 2024년 데이터 없으면 2023년 시도
+        console.log(`⚠️ ${stockCode} 2024년 데이터 없음, 2023년 시도`);
+        return await this.getFinancialStatement(stockCode, 2023, reportType);
+      } else if (response.data.status === '013' && reportType === '11011') {
+        // 사업보고서 없으면 반기보고서 시도
+        console.log(`⚠️ ${stockCode} 사업보고서 없음, 반기보고서 시도`);
+        return await this.getFinancialStatement(stockCode, year, '11012');
       } else {
         throw new Error(`DART API 오류: ${response.data.message}`);
       }
@@ -580,11 +588,21 @@ class DartService {
     try {
       console.log(`📊 DART API로 ${stockCode} 재무분석 시작...`);
       
-      const financials = await this.getThreeYearFinancials(stockCode);
+      let financials = await this.getThreeYearFinancials(stockCode);
+      
+      // Multi API 실패시 Legacy 방식 시도
+      if (financials.length < 2) {
+        console.log(`🔄 ${stockCode} Multi API 실패, Legacy 방식 시도...`);
+        financials = await this.getThreeYearFinancialsLegacy(stockCode);
+      }
+      
+      if (financials.length < 2) {
+        console.log(`⚠️ ${stockCode}: 모든 방식 실패, 재무데이터 부족 (${financials.length}년)`);
+        return null;
+      }
       
       if (financials.length < 3) {
-        console.log(`⚠️ ${stockCode}: 재무데이터 부족 (${financials.length}년)`);
-        return null;
+        console.log(`📊 ${stockCode}: 부분 재무데이터 사용 (${financials.length}년) - 성장률 계산 가능`);
       }
       
       // 매출 및 순이익 성장률 계산
