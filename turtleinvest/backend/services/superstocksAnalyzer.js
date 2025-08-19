@@ -85,7 +85,15 @@ class SuperstocksAnalyzer {
       // 4. PSR 계산 (시가총액 / 매출액)
       const estimatedShares = this.estimateSharesOutstanding(symbol, currentPrice, financialData.revenue);
       const marketCap = currentPrice * estimatedShares;
-      const psr = financialData.revenue > 0 ? marketCap / (financialData.revenue * 100000000) : 999;
+      
+      // PSR 계산 디버깅
+      console.log(`🧮 ${symbol} PSR 계산: 현재가 ${currentPrice}원, 주식수 ${estimatedShares.toLocaleString()}주, 시총 ${(marketCap/1000000000).toFixed(1)}억원`);
+      console.log(`💰 ${symbol} 매출: ${financialData.revenue.toLocaleString()}억원, 매출(원) ${(financialData.revenue * 100000000).toLocaleString()}원`);
+      
+      const revenueInWon = financialData.revenue * 100000000; // 억원 → 원 변환
+      const psr = revenueInWon > 0 ? marketCap / revenueInWon : 999;
+      
+      console.log(`📊 ${symbol} PSR = ${marketCap.toLocaleString()} / ${revenueInWon.toLocaleString()} = ${psr.toFixed(6)}`);
       
       // 조건 확인
       const meetsConditions = (
@@ -103,7 +111,7 @@ class SuperstocksAnalyzer {
         currentPrice: currentPrice,
         revenueGrowth3Y: financialData.revenueGrowth3Y,
         netIncomeGrowth3Y: financialData.netIncomeGrowth3Y,
-        psr: Math.round(psr * 100) / 100, // 소수점 2자리
+        psr: Math.round(psr * 1000) / 1000, // 소수점 3자리로 더 정밀하게
         marketCap: marketCap,
         revenue: financialData.revenue,
         netIncome: financialData.netIncome,
