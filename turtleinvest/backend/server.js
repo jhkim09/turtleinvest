@@ -12,6 +12,7 @@ const signalRoutes = require('./routes/signals');
 const kiwoomRoutes = require('./routes/kiwoom');
 const testRoutes = require('./routes/test');
 const financialDataRoutes = require('./routes/financialData');
+const test500Routes = require('./routes/test500');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -53,14 +54,40 @@ app.use('/api/signals', signalRoutes);
 app.use('/api/kiwoom', kiwoomRoutes);
 app.use('/api/test', testRoutes);
 app.use('/api/financial-data', financialDataRoutes);
+app.use('/api/test500', test500Routes);
 
-// Health Check
-app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
-    message: 'TurtleInvest API is running',
-    timestamp: new Date().toISOString()
-  });
+// Health Check (향상된 버전)
+app.get('/api/health', async (req, res) => {
+  try {
+    const StockListService = require('./services/stockListService');
+    const stats = StockListService.getStatistics();
+    
+    res.json({ 
+      status: 'OK', 
+      message: 'TurtleInvest API is running (프론트엔드 제거완료)',
+      system: {
+        mode: 'API_ONLY',
+        unifiedStocks: stats.total,
+        breakdown: `코스피 ${stats.kospi} + 코스닥 ${stats.kosdaq}`,
+        strategies: ['터틀 트레이딩', '슈퍼스톡스', '하이브리드'],
+        financialCaching: 'ENABLED'
+      },
+      endpoints: {
+        signals: '/api/signals/*',
+        financialData: '/api/financial-data/*',
+        test500: '/api/test500/*',
+        positions: '/api/positions/*'
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.json({ 
+      status: 'OK', 
+      message: 'TurtleInvest API is running',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 // 매일 아침 8시 터틀 분석 실행
