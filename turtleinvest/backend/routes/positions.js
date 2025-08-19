@@ -9,10 +9,60 @@ router.get('/', async (req, res) => {
   try {
     const userId = req.query.userId || 'default';
     
-    // MongoDB 연결 실패시 현실적인 시뮬레이션 데이터 반환
-    if (!mongoose.connection.readyState) {
-      const kiwoomConnected = KiwoomService.isConnectedToKiwoom();
+    // 키움 API 우선 시도 (MongoDB 연결과 무관하게)
+    let kiwoomData = null;
+    let kiwoomConnected = false;
+    
+    try {
+      // 키움 API 자동 인증 시도
+      if (!KiwoomService.isConnectedToKiwoom()) {
+        console.log('🔐 키움 API 자동 인증 시도...');
+        await KiwoomService.authenticate(process.env.KIWOOM_APP_KEY, process.env.KIWOOM_SECRET_KEY);
+      }
       
+      // 키움 계좌 조회
+      if (KiwoomService.isConnectedToKiwoom()) {
+        kiwoomData = await KiwoomService.getAccountBalance();
+        kiwoomConnected = true;
+        console.log(`✅ 키움 실제 데이터: 총자산 ${kiwoomData?.totalAsset?.toLocaleString()}원`);
+      }
+    } catch (error) {
+      console.log('⚠️ 키움 API 실패, 시뮬레이션 모드 사용');
+    }
+
+    // 키움 데이터가 있으면 실제 데이터, 없으면 시뮬레이션
+    if (kiwoomData) {
+      return res.json({
+        success: true,
+        portfolio: {
+          userId: userId,
+          currentCash: kiwoomData.cash,
+          totalEquity: kiwoomData.totalAsset,
+          portfolioValue: kiwoomData.totalAsset,
+          totalReturn: kiwoomData.totalReturn || 0,
+          currentRiskExposure: kiwoomData.riskExposure || 0,
+          positions: kiwoomData.positions || [],
+          riskSettings: {
+            maxRiskPerTrade: 100000,
+            maxTotalRisk: 400000,
+            minCashReserve: 200000
+          },
+          stats: kiwoomData.stats || {
+            totalTrades: 0,
+            winningTrades: 0,
+            totalProfit: 0,
+            totalLoss: 0,
+            winRate: 0,
+            profitFactor: 0
+          }
+        },
+        kiwoomConnected: true,
+        message: '키움 API 실제 계좌 데이터'
+      });
+    }
+    
+    // MongoDB 연결 실패이고 키움도 실패한 경우에만 시뮬레이션
+    if (!mongoose.connection.readyState) {
       return res.json({
         success: true,
         portfolio: {
