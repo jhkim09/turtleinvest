@@ -66,6 +66,20 @@ interface Signal {
   };
 }
 
+interface SuperstockAnalysis {
+  symbol: string;
+  name: string;
+  currentPrice: number;
+  revenueGrowth3Y: number;
+  netIncomeGrowth3Y: number;
+  psr: number;
+  score: string;
+  meetsConditions: boolean;
+  dataSource: string;
+  marketCap?: number;
+  revenue?: number;
+}
+
 function App() {
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [signals, setSignals] = useState<Signal[]>([]);
@@ -74,6 +88,12 @@ function App() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [activeTab, setActiveTab] = useState('portfolio');
   const [kiwoomConnected, setKiwoomConnected] = useState(false);
+  
+  // 슈퍼스톡스 관련 상태
+  const [superstocks, setSuperstocks] = useState<SuperstockAnalysis[]>([]);
+  const [qualifiedSuperstocks, setQualifiedSuperstocks] = useState<SuperstockAnalysis[]>([]);
+  const [superstockSummary, setSuperstockSummary] = useState<any>(null);
+  const [isSuperstockAnalyzing, setIsSuperstockAnalyzing] = useState(false);
 
   const API_BASE = 'https://turtleinvest.onrender.com/api';
 
@@ -82,6 +102,12 @@ function App() {
     loadSignals();
     loadTrades();
   }, []);
+  
+  useEffect(() => {
+    if (activeTab === 'superstocks') {
+      loadSuperstocks();
+    }
+  }, [activeTab]);
 
   const loadPortfolio = async () => {
     try {
@@ -122,6 +148,57 @@ function App() {
       }
     } catch (error) {
       console.error('거래기록 로드 실패:', error);
+    }
+  };
+
+  const loadSuperstocks = async () => {
+    try {
+      console.log('슈퍼스톡스 데이터 로드 시작...');
+      const response = await fetch(`${API_BASE}/signals/analysis-details`);
+      const data = await response.json();
+      
+      if (data.success) {
+        setSuperstocks(data.stockResults || []);
+        setQualifiedSuperstocks(data.stockResults?.filter((s: SuperstockAnalysis) => s.meetsConditions) || []);
+        setSuperstockSummary(data.analysisDetails);
+        console.log(`✅ 슈퍼스톡스 로드 완료: 총 ${data.stockResults?.length}개, 조건만족 ${data.stockResults?.filter((s: any) => s.meetsConditions).length}개`);
+      }
+    } catch (error) {
+      console.error('슈퍼스톡스 로드 실패:', error);
+    }
+  };
+
+  const runSuperstockAnalysis = async () => {
+    setIsSuperstockAnalyzing(true);
+    try {
+      console.log('슈퍼스톡스 분석 실행...');
+      const response = await fetch(`${API_BASE}/signals/make-analysis`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          apiKey: 'TtL_9K2m8X7nQ4pE6wR3vY5uI8oP1aSdF7gH9jK2mN5vB8xC3zE6rT9yU4iO7pL0', // Make.com API 키
+          investmentBudget: 1000000
+        })
+      });
+      
+      const data = await response.json();
+      if (data.success) {
+        const qualified = data.superstocks?.qualifiedStocks || [];
+        const allStocks = data.superstocks?.allAnalyzedStocks || [];
+        
+        setQualifiedSuperstocks(qualified);
+        setSuperstocks(allStocks);
+        setSuperstockSummary(data.summary);
+        
+        alert(`슈퍼스톡스 분석 완료: ${qualified.length}개 조건 만족`);
+      }
+    } catch (error) {
+      console.error('슈퍼스톡스 분석 실패:', error);
+      alert('슈퍼스톡스 분석 중 오류가 발생했습니다.');
+    } finally {
+      setIsSuperstockAnalyzing(false);
     }
   };
 
@@ -182,7 +259,13 @@ function App() {
             className={activeTab === 'signals' ? 'active' : ''}
             onClick={() => setActiveTab('signals')}
           >
-            신호분석
+            터틀신호
+          </button>
+          <button 
+            className={activeTab === 'superstocks' ? 'active' : ''}
+            onClick={() => setActiveTab('superstocks')}
+          >
+            슈퍼스톡스
           </button>
           <button 
             className={activeTab === 'trades' ? 'active' : ''}
@@ -317,6 +400,162 @@ function App() {
               ) : (
                 <div className="empty-state">
                   현재 발견된 신호가 없습니다. '신호 분석 실행' 버튼을 눌러 분석을 시작하세요.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'superstocks' && (
+          <div className="superstocks-section">
+            <div className="superstocks-header">
+              <h3>⭐ 슈퍼스톡스 분석</h3>
+              <button 
+                className="analyze-btn"
+                onClick={runSuperstockAnalysis}
+                disabled={isSuperstockAnalyzing}
+              >
+                {isSuperstockAnalyzing ? '분석 중...' : '슈퍼스톡스 분석 실행'}
+              </button>
+            </div>
+
+            {superstockSummary && (
+              <div className="summary-cards">
+                <div className="summary-card">
+                  <h4>📊 분석 완료</h4>
+                  <div className="value">{superstockSummary.successfullyAnalyzed}개</div>
+                  <div className="change">총 {superstockSummary.totalStocksToAnalyze}개 중</div>
+                </div>
+                <div className="summary-card">
+                  <h4>🎯 조건 만족</h4>
+                  <div className="value">{superstockSummary.qualifiedStocks}개</div>
+                  <div className="change">PSR ≤ 0.75, 성장률 ≥ 15%</div>
+                </div>
+                <div className="summary-card">
+                  <h4>📈 DART 데이터</h4>
+                  <div className="value">{superstockSummary.dartDataUsed}개</div>
+                  <div className="change">실제 재무데이터 사용</div>
+                </div>
+              </div>
+            )}
+
+            <div className="superstocks-tabs">
+              <button 
+                className={activeTab === 'superstocks' ? 'active' : ''}
+                onClick={() => {/* qualified 탭 */}}
+              >
+                조건 만족 ({qualifiedSuperstocks.length})
+              </button>
+              <button 
+                onClick={() => {/* all 탭 */}}
+              >
+                전체 분석 결과 ({superstocks.length})
+              </button>
+            </div>
+
+            <div className="superstocks-list">
+              {qualifiedSuperstocks.length > 0 ? (
+                <div className="qualified-stocks">
+                  <h4>🏆 슈퍼스톡 조건 만족 종목</h4>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>종목명</th>
+                        <th>현재가</th>
+                        <th>매출성장률</th>
+                        <th>순이익성장률</th>
+                        <th>PSR</th>
+                        <th>점수</th>
+                        <th>데이터</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {qualifiedSuperstocks.map((stock, index) => (
+                        <tr key={index} className="qualified-row">
+                          <td>
+                            <div>
+                              <strong>{stock.name}</strong>
+                              <small>({stock.symbol})</small>
+                            </div>
+                          </td>
+                          <td>{formatCurrency(stock.currentPrice)}</td>
+                          <td className={stock.revenueGrowth3Y >= 15 ? 'growth-good' : 'growth-bad'}>
+                            {stock.revenueGrowth3Y.toFixed(1)}%
+                          </td>
+                          <td className={stock.netIncomeGrowth3Y >= 15 ? 'growth-good' : 'growth-bad'}>
+                            {stock.netIncomeGrowth3Y.toFixed(1)}%
+                          </td>
+                          <td className={stock.psr <= 0.75 ? 'psr-good' : 'psr-bad'}>
+                            {stock.psr.toFixed(3)}
+                          </td>
+                          <td>
+                            <span className={`score ${stock.score.toLowerCase()}`}>
+                              {stock.score}
+                            </span>
+                          </td>
+                          <td>
+                            <span className={`datasource ${stock.dataSource.toLowerCase()}`}>
+                              {stock.dataSource}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="empty-state">
+                  슈퍼스톡 조건을 만족하는 종목이 없습니다.<br/>
+                  <small>조건: 매출성장률 ≥15%, 순이익성장률 ≥15%, PSR ≤0.75</small>
+                </div>
+              )}
+
+              {superstocks.length > 0 && (
+                <div className="all-stocks">
+                  <h4>📊 전체 분석 결과 (상위 10개)</h4>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>종목명</th>
+                        <th>현재가</th>
+                        <th>매출성장률</th>
+                        <th>순이익성장률</th>
+                        <th>PSR</th>
+                        <th>점수</th>
+                        <th>조건만족</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {superstocks.slice(0, 10).map((stock, index) => (
+                        <tr key={index} className={stock.meetsConditions ? 'qualified-row' : ''}>
+                          <td>
+                            <div>
+                              <strong>{stock.name}</strong>
+                              <small>({stock.symbol})</small>
+                            </div>
+                          </td>
+                          <td>{formatCurrency(stock.currentPrice)}</td>
+                          <td className={stock.revenueGrowth3Y >= 15 ? 'growth-good' : 'growth-bad'}>
+                            {stock.revenueGrowth3Y?.toFixed(1)}%
+                          </td>
+                          <td className={stock.netIncomeGrowth3Y >= 15 ? 'growth-good' : 'growth-bad'}>
+                            {stock.netIncomeGrowth3Y?.toFixed(1)}%
+                          </td>
+                          <td className={stock.psr <= 0.75 ? 'psr-good' : 'psr-bad'}>
+                            {stock.psr?.toFixed(3)}
+                          </td>
+                          <td>
+                            <span className={`score ${stock.score?.toLowerCase()}`}>
+                              {stock.score}
+                            </span>
+                          </td>
+                          <td>
+                            {stock.meetsConditions ? '✅' : '❌'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
