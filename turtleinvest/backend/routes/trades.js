@@ -59,7 +59,17 @@ router.post('/', async (req, res) => {
 // 수동 매매 기록 추가 API (Make.com HTTP 모듈용)
 router.post('/manual', async (req, res) => {
   try {
-    const { symbol, name, action, quantity, price, signal, executedAt } = req.body;
+    const { apiKey, symbol, name, action, quantity, price, signal, executedAt } = req.body;
+    
+    // API 키 검증
+    const validApiKey = process.env.MAKE_API_KEY || 'TtL_9K2m8X7nQ4pE6wR3vY5uI8oP1aSdF7gH9jK2mN5vB8xC3zE6rT9yU4iO7pL0';
+    if (!apiKey || apiKey !== validApiKey) {
+      return res.status(401).json({
+        success: false,
+        error: 'UNAUTHORIZED',
+        message: 'Invalid API key'
+      });
+    }
     
     // 필수 필드 검증
     if (!symbol || !name || !action || !quantity || !price) {
@@ -81,11 +91,19 @@ router.post('/manual', async (req, res) => {
     
     console.log(`📝 수동 매매 기록 추가: ${action} ${symbol} ${quantity}주 @ ${price.toLocaleString()}원`);
     
-    // 실현손익 계산 (매도일 경우 - 간단한 추정)
+    // 실현손익 계산 (매도일 경우)
     let realizedPL = 0;
+    let entryPrice = null;
+    
     if (action.toUpperCase() === 'SELL') {
-      // 매도 시 간단한 수익률 추정 (실제로는 보유 포지션 기반 계산 필요)
-      realizedPL = quantity * price * 0.02; // 2% 수익 추정
+      // 매도 시 실현손익 계산 (avgPrice가 제공된 경우)
+      entryPrice = req.body.avgPrice || req.body.entryPrice;
+      if (entryPrice) {
+        realizedPL = (price - entryPrice) * quantity;
+        console.log(`💰 실현손익 계산: (${price} - ${entryPrice}) × ${quantity} = ${realizedPL.toLocaleString()}원`);
+      } else {
+        console.log('⚠️ 평균단가 정보 없음, 실현손익 0으로 설정');
+      }
     }
     
     // Trade 모델에 맞는 완전한 데이터로 저장
@@ -311,6 +329,158 @@ router.post('/import-kiwoom', async (req, res) => {
       success: false,
       error: 'IMPORT_TRADES_FAILED',
       message: error.message
+    });
+  }
+});
+
+// 거래 기록 삭제 API (Make.com용)
+router.delete('/manual/:id', async (req, res) => {
+  try {
+    const { apiKey } = req.body;
+    const tradeId = req.params.id;
+    
+    // API 키 검증
+    const validApiKey = process.env.MAKE_API_KEY || 'TtL_9K2m8X7nQ4pE6wR3vY5uI8oP1aSdF7gH9jK2mN5vB8xC3zE6rT9yU4iO7pL0';
+    if (!apiKey || apiKey !== validApiKey) {
+      return res.status(401).json({
+        success: false,
+        error: 'UNAUTHORIZED',
+        message: 'Invalid API key'
+      });
+    }
+    
+    console.log(`🗑️ 매매 기록 삭제 요청: ${tradeId}`);
+    
+    // 삭제할 거래 기록 조회
+    const trade = await Trade.findById(tradeId);
+    if (!trade) {
+      return res.status(404).json({
+        success: false,
+        error: 'TRADE_NOT_FOUND',
+        message: '삭제할 거래 기록을 찾을 수 없습니다'
+      });
+    }
+    
+    console.log(`📝 삭제할 거래: ${trade.action} ${trade.symbol} ${trade.quantity}주`);
+    
+    // 거래 기록 삭제
+    await Trade.findByIdAndDelete(tradeId);
+    
+    console.log(`✅ 매매 기록 삭제 완료: ${trade.symbol}`);
+    
+    res.json({
+      success: true,
+      deletedTrade: {
+        id: trade._id,
+        symbol: trade.symbol,
+        name: trade.name,
+        action: trade.action,
+        quantity: trade.quantity,
+        price: trade.price
+      },
+      message: '매매 기록이 성공적으로 삭제되었습니다',
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('매매 기록 삭제 실패:', error);
+    res.status(500).json({
+      success: false,
+      error: 'DELETE_TRADE_FAILED',
+      message: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// 매도 전용 API (실현손익 자동 계산)
+router.post('/sell', async (req, res) => {
+  try {
+    const { apiKey, symbol, name, quantity, price, avgPrice, signal, executedAt } = req.body;
+    
+    // API 키 검증
+    const validApiKey = process.env.MAKE_API_KEY || 'TtL_9K2m8X7nQ4pE6wR3vY5uI8oP1aSdF7gH9jK2mN5vB8xC3zE6rT9yU4iO7pL0';
+    if (!apiKey || apiKey !== validApiKey) {
+      return res.status(401).json({
+        success: false,
+        error: 'UNAUTHORIZED',
+        message: 'Invalid API key'
+      });
+    }
+    
+    // 필수 필드 검증
+    if (!symbol || !name || !quantity || !price || !avgPrice) {
+      return res.status(400).json({
+        success: false,
+        error: 'MISSING_REQUIRED_FIELDS',
+        message: '매도 기록 필수 필드: symbol, name, quantity, price, avgPrice'
+      });
+    }
+    
+    console.log(`📝 매도 기록 추가: SELL ${symbol} ${quantity}주 @ ${price.toLocaleString()}원 (평균단가: ${avgPrice.toLocaleString()}원)`);
+    
+    // 실현손익 정확히 계산
+    const realizedPL = (price - avgPrice) * quantity;
+    const totalAmount = quantity * price;
+    const commission = Math.round(totalAmount * 0.00015);
+    const tax = Math.round(totalAmount * 0.0023);
+    const netAmount = totalAmount - commission - tax;
+    
+    console.log(`💰 실현손익: (${price.toLocaleString()} - ${avgPrice.toLocaleString()}) × ${quantity} = ${realizedPL.toLocaleString()}원`);
+    
+    const newTrade = new Trade({
+      userId: 'default',
+      symbol: symbol,
+      name: name,
+      action: 'SELL',
+      quantity: parseInt(quantity),
+      price: parseFloat(price),
+      totalAmount: totalAmount,
+      commission: commission,
+      tax: tax,
+      netAmount: netAmount,
+      tradeDate: executedAt ? new Date(executedAt) : new Date(),
+      signal: signal && ['20day_breakout', '10day_breakdown', '55day_breakout', '20day_breakdown', 'stop_loss'].includes(signal) 
+        ? signal : '10day_breakdown', // 매도 기본값
+      atr: 3000,
+      nValue: 3000,
+      riskAmount: Math.round(totalAmount * 0.02),
+      entryPrice: parseFloat(avgPrice),
+      realizedPL: realizedPL,
+      notes: `수동 매도 기록: Make.com HTTP 모듈을 통한 매도 거래`,
+      recordedAt: new Date()
+    });
+    
+    await newTrade.save();
+    
+    console.log(`✅ 매도 기록 저장 완료: ${symbol} 실현손익 ${realizedPL.toLocaleString()}원`);
+    
+    res.json({
+      success: true,
+      trade: {
+        id: newTrade._id,
+        symbol: newTrade.symbol,
+        name: newTrade.name,
+        action: newTrade.action,
+        quantity: newTrade.quantity,
+        price: newTrade.price,
+        avgPrice: newTrade.entryPrice,
+        realizedPL: newTrade.realizedPL,
+        netAmount: newTrade.netAmount,
+        executedAt: newTrade.tradeDate,
+        signal: newTrade.signal
+      },
+      message: `매도 기록 완료: 실현손익 ${realizedPL.toLocaleString()}원`,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('매도 기록 실패:', error);
+    res.status(500).json({
+      success: false,
+      error: 'SELL_TRADE_RECORD_FAILED',
+      message: error.message,
+      timestamp: new Date().toISOString()
     });
   }
 });
