@@ -232,15 +232,18 @@ class KiwoomService {
         const totalPurchase = parseInt(data.tot_pur_amt || '0'); // 총매입금액
         const cash = totalAsset - totalEvaluation; // 현금 = 총자산 - 평가금액
         
-        // 보유종목 정보
+        // 보유종목 정보 (올바른 필드명 사용)
         const positions = (data.acnt_evlt_remn_indv_tot || []).map(item => ({
           symbol: item.stk_cd || '',
           name: item.stk_nm || '',
-          quantity: parseInt(item.qty || '0'),
-          avgPrice: parseInt(item.avg_pric || '0'),
-          currentPrice: parseInt(item.prsnt_pric || '0'),
-          unrealizedPL: parseInt(item.evlt_pl || '0'),
-          totalValue: parseInt(item.evlt_amt || '0')
+          quantity: parseInt(item.rmnd_qty || '0'), // 보유수량
+          avgPrice: parseInt(item.pur_pric || '0'), // 매입가
+          currentPrice: parseInt(item.cur_prc || '0'), // 현재가
+          unrealizedPL: parseInt(item.evltv_prft || '0'), // 평가손익
+          totalValue: parseInt(item.evlt_amt || '0'), // 평가금액
+          profitRate: parseFloat(item.prft_rt || '0'), // 수익률
+          entryDate: new Date().toISOString().split('T')[0], // 진입일자 (추정)
+          entrySignal: 'MANUAL_BUY' // 수동 매수 (추정)
         })).filter(pos => pos.quantity > 0);
         
         console.log('✅ 실제 키움 계좌 조회 성공');
