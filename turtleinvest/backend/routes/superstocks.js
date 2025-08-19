@@ -478,13 +478,21 @@ router.post('/hybrid-search', async (req, res) => {
     
     const priceMap = priceResult.prices;
 
-    // 3. 재무데이터 + 실시간 가격 조합 분석
+    // 3. 실제 가격이 있는 종목만 분석 (가격 없으면 스킵)
     const results = [];
+    let skippedCount = 0;
 
     financialCandidates.forEach(stock => {
-      const currentPrice = priceMap.get(stock.stockCode) || 50000; // 기본값 5만원
+      const currentPrice = priceMap.get(stock.stockCode);
       
-      // PSR 계산
+      // 실제 가격이 없으면 해당 종목 스킵
+      if (!currentPrice || currentPrice <= 1000) {
+        skippedCount++;
+        console.log(`⏭️ ${stock.stockCode} ${stock.name}: 가격 정보 없어서 분석 제외`);
+        return;
+      }
+      
+      // PSR 계산 (실제 가격으로만)
       const marketCap = currentPrice * stock.sharesOutstanding;
       const revenueInWon = stock.revenue * 100000000;
       const psr = revenueInWon > 0 ? marketCap / revenueInWon : 999;
@@ -502,10 +510,12 @@ router.post('/hybrid-search', async (req, res) => {
           marketCap: marketCap,
           score: stock.revenueGrowth3Y >= 30 ? 'EXCELLENT' : 'GOOD',
           dataSource: 'HYBRID_CACHE_KIWOOM',
-          priceSource: priceMap.has(stock.stockCode) ? 'KIWOOM_REAL' : 'ESTIMATED'
+          priceSource: 'VERIFIED_PRICE' // 검증된 실제 가격만 사용
         });
       }
     });
+
+    console.log(`📊 가격 검증 결과: ${results.length}개 분석 완료, ${skippedCount}개 가격 부족으로 제외`);
 
     const endTime = Date.now();
     const processingTime = ((endTime - startTime) / 1000).toFixed(2);
@@ -520,9 +530,11 @@ router.post('/hybrid-search', async (req, res) => {
       method: 'HYBRID_CACHE_KIWOOM',
       searchConditions,
       summary: {
-        analyzed: financialCandidates.length,
-        found: results.length,
-        priceSource: priceResult.summary
+        financialCandidates: financialCandidates.length,
+        withValidPrice: financialCandidates.length - skippedCount,
+        skippedNoPriceData: skippedCount,
+        finalQualified: results.length,
+        priceDataSummary: priceResult.summary
       },
       stocks: results.sort((a, b) => b.revenueGrowth3Y - a.revenueGrowth3Y).slice(0, 15),
       performance: {
