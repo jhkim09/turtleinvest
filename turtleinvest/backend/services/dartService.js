@@ -176,8 +176,50 @@ class DartService {
     }
   }
   
+  // 상장주식수 조회 (DART API - 발행주식수 정보)
+  async getSharesOutstanding(stockCode, year = 2024) {
+    try {
+      const corpInfo = await this.getCorpCode(stockCode);
+      if (!corpInfo) {
+        throw new Error('기업코드를 찾을 수 없습니다');
+      }
+      
+      await this.delay(this.rateLimitDelay);
+      
+      // 주식발행현황 API 사용
+      const response = await axios.get(`${this.baseURL}/stockSttus.json`, {
+        params: {
+          crtfc_key: this.apiKey,
+          corp_code: corpInfo.corpCode,
+          bsns_year: year.toString(),
+          reprt_code: '11011' // 사업보고서
+        }
+      });
+      
+      if (response.data.status === '000' && response.data.list?.length > 0) {
+        // 보통주 발행주식수 찾기
+        const stockData = response.data.list.find(item => 
+          item.se && (item.se.includes('보통주') || item.se.includes('주식수'))
+        );
+        
+        if (stockData && stockData.istc_totqy) {
+          const shares = parseInt(stockData.istc_totqy.replace(/[,]/g, ''));
+          console.log(`📈 ${stockCode} 상장주식수: ${shares.toLocaleString()}주`);
+          return shares;
+        }
+      }
+      
+      console.log(`⚠️ ${stockCode} 상장주식수 정보 없음`);
+      return null;
+      
+    } catch (error) {
+      console.error(`상장주식수 조회 실패 (${stockCode}):`, error.message);
+      return null;
+    }
+  }
+  
   // 재무제표 조회 (단일회사 전체 재무제표)
-  async getFinancialStatement(stockCode, year = 2023, reportType = '11011') {
+  async getFinancialStatement(stockCode, year = 2024, reportType = '11011') {
     try {
       const cacheKey = `fs_${stockCode}_${year}_${reportType}`;
       if (this.cache.has(cacheKey)) {
@@ -230,25 +272,25 @@ class DartService {
       const accountName = item.account_nm;
       const amount = parseInt(item.thstrm_amount?.replace(/,/g, '') || '0');
       
-      // 매출액 (수익인식기준)
+      // 매출액 (수익인식기준) - DART는 백만원 단위
       if (accountName.includes('수익(매출액)') || accountName.includes('매출액')) {
-        result.revenue = amount;
+        result.revenue = amount / 100; // 백만원 → 억원 변환
       }
-      // 당기순이익
+      // 당기순이익 - DART는 백만원 단위
       else if (accountName.includes('당기순이익') || accountName.includes('순이익')) {
-        result.netIncome = amount;
+        result.netIncome = amount / 100; // 백만원 → 억원 변환
       }
-      // 영업이익
+      // 영업이익 - DART는 백만원 단위
       else if (accountName.includes('영업이익')) {
-        result.operatingIncome = amount;
+        result.operatingIncome = amount / 100; // 백만원 → 억원 변환
       }
-      // 총자산
+      // 총자산 - DART는 백만원 단위
       else if (accountName.includes('자산총계') || accountName.includes('총자산')) {
-        result.totalAssets = amount;
+        result.totalAssets = amount / 100; // 백만원 → 억원 변환
       }
-      // 자본총계
+      // 자본총계 - DART는 백만원 단위
       else if (accountName.includes('자본총계') || accountName.includes('총자본')) {
-        result.totalEquity = amount;
+        result.totalEquity = amount / 100; // 백만원 → 억원 변환
       }
     });
     
@@ -258,8 +300,8 @@ class DartService {
   // 3개년 재무데이터 조회
   async getThreeYearFinancials(stockCode) {
     try {
-      const currentYear = new Date().getFullYear() - 1; // 전년도부터
-      const years = [currentYear - 2, currentYear - 1, currentYear]; // 3개년
+      const currentYear = 2024; // 2024년 기준
+      const years = [2022, 2023, 2024]; // 3개년
       
       const financials = [];
       

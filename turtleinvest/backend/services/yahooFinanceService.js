@@ -153,6 +153,65 @@ class YahooFinanceService {
     return results;
   }
   
+  // 주식 기본 정보 조회 (상장주식수 포함)
+  async getStockInfo(symbol) {
+    try {
+      const yahooSymbol = this.convertToYahooSymbol(symbol);
+      const cacheKey = `info_${yahooSymbol}`;
+      
+      // 캐시 확인 (1시간 유효)
+      if (this.cache.has(cacheKey)) {
+        const cached = this.cache.get(cacheKey);
+        if (Date.now() - cached.timestamp < 60 * 60 * 1000) {
+          return cached.data;
+        }
+      }
+      
+      await this.delay(this.rateLimitDelay);
+      
+      // Yahoo Finance 주식 정보 API
+      const response = await axios.get(`${this.baseURL}/v10/finance/quoteSummary/${yahooSymbol}`, {
+        params: {
+          modules: 'defaultKeyStatistics,financialData,summaryDetail'
+        },
+        timeout: 10000
+      });
+      
+      const result = response.data?.quoteSummary?.result?.[0];
+      if (result) {
+        const keyStats = result.defaultKeyStatistics || {};
+        const financials = result.financialData || {};
+        const summary = result.summaryDetail || {};
+        
+        const stockInfo = {
+          sharesOutstanding: keyStats.sharesOutstanding?.raw || null,
+          marketCap: summary.marketCap?.raw || null,
+          forwardPE: summary.forwardPE?.raw || null,
+          trailingPE: summary.trailingPE?.raw || null,
+          priceToSalesTrailing12Months: summary.priceToSalesTrailing12Months?.raw || null,
+          totalRevenue: financials.totalRevenue?.raw || null,
+          totalCash: financials.totalCash?.raw || null
+        };
+        
+        console.log(`📊 ${symbol} Yahoo 정보: 상장주식수 ${stockInfo.sharesOutstanding?.toLocaleString() || 'N/A'}주, 시총 ${(stockInfo.marketCap/1000000000)?.toFixed(1) || 'N/A'}억원, PSR ${stockInfo.priceToSalesTrailing12Months?.toFixed(2) || 'N/A'}`);
+        
+        // 캐시 저장
+        this.cache.set(cacheKey, {
+          data: stockInfo,
+          timestamp: Date.now()
+        });
+        
+        return stockInfo;
+      }
+      
+      return null;
+      
+    } catch (error) {
+      console.error(`Yahoo Finance 주식정보 조회 실패 (${symbol}):`, error.message);
+      return null;
+    }
+  }
+  
   // Rate limit을 위한 지연 함수
   delay(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));

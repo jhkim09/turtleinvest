@@ -82,12 +82,30 @@ class SuperstocksAnalyzer {
         return null; // DART API 실패시 null 반환
       }
       
-      // 4. PSR 계산 (시가총액 / 매출액)
-      const estimatedShares = this.estimateSharesOutstanding(symbol, currentPrice, financialData.revenue);
-      const marketCap = currentPrice * estimatedShares;
+      // 4. 실제 상장주식수 조회 (DART 우선, Yahoo Finance 대안)
+      let actualShares = await DartService.getSharesOutstanding(symbol, 2024);
+      
+      // DART에서 못 가져오면 Yahoo Finance 시도
+      if (!actualShares) {
+        const YahooFinanceService = require('./yahooFinanceService');
+        const yahooInfo = await YahooFinanceService.getStockInfo(symbol);
+        if (yahooInfo && yahooInfo.sharesOutstanding) {
+          actualShares = yahooInfo.sharesOutstanding;
+          console.log(`📊 ${symbol} Yahoo 상장주식수 사용: ${actualShares.toLocaleString()}주`);
+        }
+      }
+      
+      // 둘 다 실패하면 추정값 사용
+      if (!actualShares) {
+        actualShares = this.estimateSharesOutstanding(symbol, currentPrice, financialData.revenue);
+        console.log(`📊 ${symbol} 추정 상장주식수 사용: ${actualShares.toLocaleString()}주`);
+      }
+      
+      // PSR 계산 (시가총액 / 매출액)
+      const marketCap = currentPrice * actualShares;
       
       // PSR 계산 디버깅
-      console.log(`🧮 ${symbol} PSR 계산: 현재가 ${currentPrice}원, 주식수 ${estimatedShares.toLocaleString()}주, 시총 ${(marketCap/1000000000).toFixed(1)}억원`);
+      console.log(`🧮 ${symbol} PSR 계산: 현재가 ${currentPrice}원, 주식수 ${actualShares.toLocaleString()}주, 시총 ${(marketCap/1000000000).toFixed(1)}억원`);
       console.log(`💰 ${symbol} 매출: ${financialData.revenue.toLocaleString()}억원, 매출(원) ${(financialData.revenue * 100000000).toLocaleString()}원`);
       
       const revenueInWon = financialData.revenue * 100000000; // 억원 → 원 변환
