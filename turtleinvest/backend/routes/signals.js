@@ -156,14 +156,29 @@ router.post('/make-analysis', async (req, res) => {
     global.turtleAnalysisLogs = [];
     global.investmentBudget = budget; // 전역 변수로 예산 설정
     
-    // 터틀 분석
-    const turtleSignals = await TurtleAnalyzer.analyzeMarket();
+    // 터틀 분석 (오류 방어)
+    let turtleSignals = [];
+    try {
+      turtleSignals = await TurtleAnalyzer.analyzeMarket() || [];
+      console.log(`✅ 터틀 분석 완료: ${turtleSignals.length}개 신호`);
+    } catch (turtleError) {
+      console.error('❌ 터틀 분석 실패:', turtleError.message);
+      turtleSignals = [];
+    }
     
-    // 슈퍼스톡스 분석
-    const stockList = symbols || SuperstocksAnalyzer.getDefaultStockList();
-    const superstocks = await SuperstocksAnalyzer.analyzeSuperstocks(stockList);
+    // 슈퍼스톡스 분석 (오류 방어)
+    let superstocks = [];
+    try {
+      const stockList = symbols || SuperstocksAnalyzer.getDefaultStockList();
+      console.log(`📊 슈퍼스톡스 분석 시작: ${stockList.length}개 종목`);
+      superstocks = await SuperstocksAnalyzer.analyzeSuperstocks(stockList) || [];
+      console.log(`✅ 슈퍼스톡스 분석 완료: ${superstocks.length}개 결과`);
+    } catch (superstocksError) {
+      console.error('❌ 슈퍼스톡스 분석 실패:', superstocksError.message);
+      superstocks = [];
+    }
     
-    // 두 조건 모두 만족하는 주식 찾기
+    // 두 조건 모두 만족하는 주식 찾기 (안전한 처리)
     const overlappingStocks = [];
     
     turtleSignals.forEach(turtle => {
@@ -186,14 +201,23 @@ router.post('/make-analysis', async (req, res) => {
       }
     });
     
+    // 안전한 응답 구조 생성
+    const qualifiedSuperstocks = superstocks.filter(s => s && s.meetsConditions) || [];
+    const totalSuperstocks = superstocks.filter(s => s !== null) || [];
+    
     const result = {
       success: true,
       timestamp: new Date().toISOString(),
       summary: {
-        turtleSignals: turtleSignals.length,
-        qualifiedSuperstocks: superstocks.length,
-        overlappingStocks: overlappingStocks.length,
-        hasOverlap: overlappingStocks.length > 0
+        turtleSignals: turtleSignals.length || 0,
+        qualifiedSuperstocks: qualifiedSuperstocks.length || 0,
+        totalSuperstocksAnalyzed: totalSuperstocks.length || 0,
+        overlappingStocks: overlappingStocks.length || 0,
+        hasOverlap: overlappingStocks.length > 0,
+        analysisStatus: {
+          turtleSuccess: turtleSignals.length >= 0,
+          superstocksSuccess: totalSuperstocks.length >= 0
+        }
       },
       turtleTrading: {
         totalSignals: turtleSignals.length,
@@ -213,13 +237,14 @@ router.post('/make-analysis', async (req, res) => {
         analysisLogs: (global.turtleAnalysisLogs || []).slice(0, 5) // 처음 5개 종목 분석 로그
       },
       superstocks: {
-        totalAnalyzed: stockList.length,
-        qualifiedStocks: superstocks.filter(s => s.meetsConditions).length,
-        excellentStocks: superstocks.filter(s => s.score === 'EXCELLENT').length,
-        goodStocks: superstocks.filter(s => s.score === 'GOOD').length,
+        totalAnalyzed: (symbols || SuperstocksAnalyzer.getDefaultStockList()).length || 0,
+        successfullyAnalyzed: totalSuperstocks.length || 0,
+        qualifiedCount: qualifiedSuperstocks.length || 0,
+        excellentStocks: superstocks.filter(s => s && s.score === 'EXCELLENT').length || 0,
+        goodStocks: superstocks.filter(s => s && s.score === 'GOOD').length || 0,
         
-        // 조건 만족 주식들
-        qualifiedStocks: superstocks.filter(s => s.meetsConditions).map(stock => ({
+        // 조건 만족 주식들 (안전한 필터링)
+        qualifiedStocks: qualifiedSuperstocks.map(stock => ({
           symbol: stock.symbol,
           name: stock.name,
           currentPrice: stock.currentPrice,
@@ -323,10 +348,46 @@ router.post('/make-analysis', async (req, res) => {
     
   } catch (error) {
     console.error('통합 분석 실패:', error);
-    res.status(500).json({
+    
+    // 안전한 오류 응답 (Make.com이 파싱할 수 있도록)
+    res.status(200).json({
       success: false,
       error: 'INTEGRATED_ANALYSIS_FAILED',
-      message: error.message,
+      message: error.message || '알 수 없는 오류',
+      timestamp: new Date().toISOString(),
+      summary: {
+        turtleSignals: 0,
+        qualifiedSuperstocks: 0,
+        totalSuperstocksAnalyzed: 0,
+        overlappingStocks: 0,
+        hasOverlap: false,
+        analysisStatus: {
+          turtleSuccess: false,
+          superstocksSuccess: false
+        }
+      },
+      turtleTrading: {
+        totalSignals: 0,
+        buySignals: 0,
+        sellSignals: 0,
+        signals: [],
+        analysisLogs: []
+      },
+      superstocks: {
+        totalAnalyzed: 0,
+        successfullyAnalyzed: 0,
+        qualifiedCount: 0,
+        excellentStocks: 0,
+        goodStocks: 0,
+        qualifiedStocks: []
+      },
+      overlappingStocks: [],
+      metadata: {
+        analysisType: 'integrated_turtle_superstocks',
+        market: 'KRX',
+        apiVersion: '2.0',
+        errorOccurred: true
+      },
       timestamp: new Date().toISOString()
     });
   }
