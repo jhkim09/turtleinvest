@@ -146,7 +146,7 @@ router.post('/bulk-collection-test', async (req, res) => {
         fullResults: results,
         performance: {
           totalStocks: stockCodes.length,
-          duration: `${(endTime - startTime) / 1000 / 60).toFixed(1)}분`,
+          duration: `${((endTime - startTime) / 1000 / 60).toFixed(1)}분`,
           successRate: `${(results.success / results.total * 100).toFixed(1)}%`
         },
         message: `전체 수집 완료: ${results.success}개 성공, ${results.failed}개 실패`
