@@ -72,23 +72,35 @@ class SuperstocksAnalyzer {
     try {
       console.log(`📊 ${symbol} 슈퍼스톡스 분석 시작...`);
       
-      // 1. 현재가 조회 (키움 API 우선, Yahoo Finance 대안)
+      // 1. 현재가 조회 (키움 API 우선, Yahoo Finance 백업)
+      let currentPrice = null;
+      
       // 키움 API 인증 확인 및 자동 인증
       if (!KiwoomService.isConnectedToKiwoom()) {
         console.log(`🔐 ${symbol} 분석을 위한 키움 API 인증 시도...`);
         try {
           await KiwoomService.authenticate(process.env.KIWOOM_APP_KEY, process.env.KIWOOM_SECRET_KEY);
+          currentPrice = await KiwoomService.getCurrentPrice(symbol);
         } catch (authError) {
-          console.log(`⚠️ ${symbol} 키움 인증 실패: ${authError.message}`);
+          console.log(`⚠️ ${symbol} 키움 인증 및 가격 조회 실패: ${authError.message}`);
         }
+      } else {
+        currentPrice = await KiwoomService.getCurrentPrice(symbol);
       }
       
-      let currentPrice = await KiwoomService.getCurrentPrice(symbol);
-      
-      // 키움 실패시 Yahoo Finance 사용
+      // 키움 실패시에만 Yahoo Finance 백업 사용
       if (!currentPrice) {
-        console.log(`⚠️ ${symbol} 키움 가격 조회 실패, Yahoo Finance 사용`);
-        currentPrice = await YahooFinanceService.getCurrentPrice(symbol);
+        console.log(`⚠️ ${symbol} 키움 가격 조회 실패, Yahoo Finance 백업 사용`);
+        try {
+          currentPrice = await YahooFinanceService.getCurrentPrice(symbol);
+          if (currentPrice) {
+            console.log(`📊 ${symbol} Yahoo 백업 현재가 사용: ${currentPrice.toLocaleString()}원`);
+          }
+        } catch (error) {
+          console.log(`⚠️ ${symbol} Yahoo Finance 백업 현재가 조회도 실패: ${error.message}`);
+        }
+      } else {
+        console.log(`📊 ${symbol} 키움 현재가 사용: ${currentPrice.toLocaleString()}원`);
       }
       
       if (!currentPrice) {
@@ -96,99 +108,47 @@ class SuperstocksAnalyzer {
         return null;
       }
       
-      // 2. DART API로 실제 재무데이터 조회 (Yahoo Finance 보완)
+      // 2. DART API로 실제 재무데이터 조회 (야후파이낸스 제거)
       let financialData;
       try {
         financialData = await DartService.analyzeStockFinancials(symbol);
         if (!financialData || !financialData.stockCode) {
-          console.log(`⚠️ ${symbol} DART 데이터 없음, Yahoo Finance로 보완 시도`);
-          
-          // Yahoo Finance에서 재무데이터 보완
-          const yahooInfo = await YahooFinanceService.getStockInfo(symbol);
-          if (yahooInfo && yahooInfo.totalRevenue) {
-            console.log(`📊 ${symbol} Yahoo Finance 재무데이터 사용`);
-            // Yahoo 데이터를 DART 형식으로 변환 (간단히)
-            financialData = {
-              stockCode: symbol,
-              name: this.getStockName(symbol),
-              revenue: yahooInfo.totalRevenue / 100000000, // 원 → 억원
-              revenueGrowth3Y: 10, // 기본값 (Yahoo에서 성장률 없음)
-              netIncomeGrowth3Y: 10 // 기본값
-            };
-          } else {
-            console.log(`⚠️ ${symbol} 모든 데이터 소스 실패, 건너뛰기`);
-            return null;
-          }
+          console.log(`⚠️ ${symbol} DART 재무데이터 없음, 건너뛰기`);
+          return null; // 야후 파이낸스 보완 제거, 순수 DART 데이터만 사용
         }
+        console.log(`✅ ${symbol} DART 재무데이터 사용 - 매출성장률: ${financialData.revenueGrowth3Y}%, 순이익성장률: ${financialData.netIncomeGrowth3Y}%`);
       } catch (error) {
         console.log(`⚠️ ${symbol} DART API 호출 실패: ${error.message}, 건너뛰기`);
         return null; // DART API 실패시 null 반환
       }
       
-      // 4. 실제 상장주식수 조회 (Yahoo Finance 우선, DART 대안)
+      // 4. 실제 상장주식수 조회 (DART API 우선, Yahoo Finance 백업)
       let actualShares = null;
-      let yahooInfo = null;
       
-      // Yahoo Finance에서 주식 정보 조회 (PSR도 함께)
+      // DART API에서 상장주식수 우선 조회
       try {
-        yahooInfo = await YahooFinanceService.getStockInfo(symbol);
-        if (yahooInfo && yahooInfo.sharesOutstanding) {
-          actualShares = yahooInfo.sharesOutstanding;
-          console.log(`📊 ${symbol} Yahoo 상장주식수 사용: ${actualShares.toLocaleString()}주`);
-          
-          // Yahoo Finance에서 매출 데이터를 가져와서 현재 주가로 PSR 직접 계산
-          if (yahooInfo.totalRevenue && yahooInfo.totalRevenue > 0) {
-            console.log(`💡 ${symbol} Yahoo 매출데이터로 현재가 기준 PSR 계산`);
-            
-            // 현재 시가총액 계산 (현재가 × 상장주식수)
-            const currentMarketCap = currentPrice * actualShares;
-            
-            // PSR = 현재 시가총액 / 연매출
-            const calculatedPSR = currentMarketCap / yahooInfo.totalRevenue;
-            
-            console.log(`📊 ${symbol} PSR 계산상세:`);
-            console.log(`   현재가: ${currentPrice.toLocaleString()}원`);
-            console.log(`   상장주식수: ${actualShares.toLocaleString()}주`);
-            console.log(`   현재 시총: ${(currentMarketCap/1000000000).toFixed(1)}억원`);
-            console.log(`   연매출: ${(yahooInfo.totalRevenue/1000000000).toFixed(1)}억원`);
-            console.log(`   PSR: ${(currentMarketCap/1000000000).toFixed(1)} ÷ ${(yahooInfo.totalRevenue/1000000000).toFixed(1)} = ${calculatedPSR.toFixed(4)}`);
-            
-            return {
-              symbol: symbol,
-              name: financialData.name || this.getStockName(symbol),
-              currentPrice: currentPrice,
-              revenueGrowth3Y: financialData.revenueGrowth3Y,
-              netIncomeGrowth3Y: financialData.netIncomeGrowth3Y,
-              psr: (() => {
-                const rounded = Math.round(calculatedPSR * 1000) / 1000;
-                console.log(`🔢 ${symbol} Yahoo PSR 반올림: ${calculatedPSR} → ${rounded}`);
-                return rounded;
-              })(),
-              marketCap: currentMarketCap,
-              revenue: yahooInfo.totalRevenue / 100000000, // 원 → 억원
-              netIncome: financialData.netIncome,
-              dataSource: 'YAHOO_HYBRID',
-              score: this.calculateScore(financialData.revenueGrowth3Y, financialData.netIncomeGrowth3Y, calculatedPSR),
-              meetsConditions: (
-                financialData.revenueGrowth3Y >= this.minRevenueGrowth &&
-                financialData.netIncomeGrowth3Y >= this.minNetIncomeGrowth &&
-                calculatedPSR <= this.maxPSR
-              ),
-              timestamp: new Date().toISOString()
-            };
-          } else {
-            console.log(`⚠️ ${symbol} Yahoo totalRevenue 없음, DART 매출로 PSR 계산 계속 진행`);
-          }
-        } else {
-          console.log(`⚠️ ${symbol} Yahoo 상장주식수 없음`);
+        actualShares = await DartService.getSharesOutstanding(symbol, 2024);
+        if (actualShares) {
+          console.log(`📊 ${symbol} DART 상장주식수 사용: ${actualShares.toLocaleString()}주`);
         }
       } catch (error) {
-        console.log(`⚠️ ${symbol} Yahoo Finance 조회 실패: ${error.message}`);
+        console.log(`⚠️ ${symbol} DART 상장주식수 조회 실패: ${error.message}`);
       }
       
-      // Yahoo에서 실패하면 DART 시도
+      // DART 실패시에만 Yahoo Finance 백업 사용
+      let yahooInfo = null;
       if (!actualShares) {
-        actualShares = await DartService.getSharesOutstanding(symbol, 2024);
+        try {
+          yahooInfo = await YahooFinanceService.getStockInfo(symbol);
+          if (yahooInfo && yahooInfo.sharesOutstanding) {
+            actualShares = yahooInfo.sharesOutstanding;
+            console.log(`📊 ${symbol} Yahoo 백업 상장주식수 사용: ${actualShares.toLocaleString()}주`);
+          } else {
+            console.log(`⚠️ ${symbol} Yahoo 상장주식수도 없음`);
+          }
+        } catch (error) {
+          console.log(`⚠️ ${symbol} Yahoo Finance 백업 조회도 실패: ${error.message}`);
+        }
       }
       
       // 둘 다 실패하면 추정값 사용
