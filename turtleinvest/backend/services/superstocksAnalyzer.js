@@ -94,7 +94,7 @@ class SuperstocksAnalyzer {
         psr <= this.maxPSR
       );
       
-      console.log(`📊 ${symbol} 완료: 현재가 ${currentPrice}원, 매출성장률 ${financialData.revenueGrowth3Y}%, 순이익성장률 ${financialData.netIncomeGrowth3Y}%, PSR ${psr.toFixed(2)}, 조건만족: ${meetsConditions}`);
+      console.log(`📊 ${symbol} 완료: 현재가 ${currentPrice}원, 매출성장률 ${financialData.revenueGrowth3Y}%, 순이익성장률 ${financialData.netIncomeGrowth3Y}%, PSR ${psr.toFixed(4)} (시총: ${(marketCap/1000000000).toFixed(0)}억, 매출: ${(financialData.revenue/10000).toFixed(0)}억), 조건만족: ${meetsConditions}`);
       
       // 5. 결과 반환
       return {
