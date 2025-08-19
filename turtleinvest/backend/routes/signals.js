@@ -4,6 +4,7 @@ const Signal = require('../models/Signal');
 const TurtleAnalyzer = require('../services/turtleAnalyzer');
 const SuperstocksAnalyzer = require('../services/superstocksAnalyzer');
 const SlackMessageFormatter = require('../services/slackMessageFormatter');
+const FinancialData = require('../models/FinancialData');
 
 // API 헬스체크 및 상태 확인
 router.get('/health', async (req, res) => {
@@ -427,19 +428,59 @@ router.post('/make-analysis', async (req, res) => {
       turtleSignals = [];
     }
     
-    // 슈퍼스톡스 분석 (고속 검색 사용)
+    // 슈퍼스톡스 분석 (하이브리드 방식: 캐시 + 키움 가격)
     let superstocks = [];
     try {
-      const stockList = symbols || SuperstocksAnalyzer.getDefaultStockList();
-      console.log(`📊 고속 슈퍼스톡스 분석 시작: ${stockList.length}개 종목`);
+      console.log(`📊 하이브리드 슈퍼스톡스 분석 시작...`);
       
-      // 새로운 고속 검색 방식 사용
-      const FinancialDataCacheService = require('../services/financialDataCacheService');
-      const financialDataMap = await FinancialDataCacheService.getSuperstocksFinancialData(stockList);
-      
-      // 기존 분석기 사용하되 이미 수집된 재무데이터 활용
-      superstocks = await SuperstocksAnalyzer.analyzeSuperstocks(stockList) || [];
-      console.log(`✅ 고속 슈퍼스톡스 분석 완료: ${superstocks.length}개 결과`);
+      // 1. 캐시에서 재무조건 만족 종목 조회 (DART API 호출 없음)
+      const financialCandidates = await FinancialData.find({
+        dataYear: 2025,
+        dataSource: 'ESTIMATED',
+        revenueGrowth3Y: { $gte: 15 },
+        netIncomeGrowth3Y: { $gte: 15 },
+        revenue: { $gt: 100 }
+      }).sort({ revenueGrowth3Y: -1 }).limit(30); // 상위 30개
+
+      console.log(`📋 재무조건 만족: ${financialCandidates.length}개 후보`);
+
+      // 2. 키움 API로 가격 조회 (검증된 가격만)
+      const StockPriceService = require('../services/stockPriceService');
+      const stockCodes = financialCandidates.map(stock => stock.stockCode);
+      const priceResult = await StockPriceService.getBulkPrices(stockCodes, false);
+
+      // 3. 실제 가격이 있는 종목만 분석
+      financialCandidates.forEach(stock => {
+        const currentPrice = priceResult.prices.get(stock.stockCode);
+        
+        if (currentPrice && currentPrice > 1000) {
+          // PSR 계산
+          const marketCap = currentPrice * stock.sharesOutstanding;
+          const revenueInWon = stock.revenue * 100000000;
+          const psr = revenueInWon > 0 ? marketCap / revenueInWon : 999;
+
+          // PSR 조건 확인 (현실적 기준 2.5)
+          if (psr <= 2.5) {
+            superstocks.push({
+              symbol: stock.stockCode,
+              name: stock.name,
+              currentPrice: currentPrice,
+              revenueGrowth3Y: stock.revenueGrowth3Y,
+              netIncomeGrowth3Y: stock.netIncomeGrowth3Y,
+              psr: Math.round(psr * 1000) / 1000,
+              marketCap: marketCap,
+              revenue: stock.revenue,
+              netIncome: stock.netIncome,
+              score: stock.revenueGrowth3Y >= 30 ? 'EXCELLENT' : 'GOOD',
+              meetsConditions: true,
+              dataSource: 'HYBRID_CACHE_KIWOOM',
+              timestamp: new Date().toISOString()
+            });
+          }
+        }
+      });
+
+      console.log(`✅ 하이브리드 슈퍼스톡스 분석 완료: ${superstocks.length}개 결과`);
     } catch (superstocksError) {
       console.error('❌ 슈퍼스톡스 분석 실패:', superstocksError.message);
       superstocks = [];
@@ -504,14 +545,15 @@ router.post('/make-analysis', async (req, res) => {
         analysisLogs: (global.turtleAnalysisLogs || []).slice(0, 5) // 처음 5개 종목 분석 로그
       },
       superstocks: {
-        totalAnalyzed: (symbols || SuperstocksAnalyzer.getDefaultStockList()).length || 0,
-        successfullyAnalyzed: totalSuperstocks.length || 0,
-        qualifiedCount: qualifiedSuperstocks.length || 0,
+        analysisMethod: 'HYBRID_CACHE_KIWOOM',
+        financialCandidates: 30, // 고정 (상위 30개 재무조건 만족)
+        successfullyAnalyzed: superstocks.length || 0,
+        qualifiedCount: superstocks.length || 0,
         excellentStocks: superstocks.filter(s => s && s.score === 'EXCELLENT').length || 0,
         goodStocks: superstocks.filter(s => s && s.score === 'GOOD').length || 0,
         
-        // 조건 만족 주식들 (안전한 필터링)
-        qualifiedStocks: qualifiedSuperstocks.map(stock => ({
+        // 조건 만족 주식들 (하이브리드 분석 결과)
+        qualifiedStocks: superstocks.map(stock => ({
           symbol: stock.symbol,
           name: stock.name,
           currentPrice: stock.currentPrice,
@@ -522,7 +564,7 @@ router.post('/make-analysis', async (req, res) => {
           dataSource: stock.dataSource
         })),
         
-        // 점수별 분류
+        // 점수별 분류 (하이브리드 분석 결과)
         excellentStocks: superstocks.filter(s => s.score === 'EXCELLENT').map(stock => ({
           symbol: stock.symbol,
           name: stock.name,
@@ -531,7 +573,6 @@ router.post('/make-analysis', async (req, res) => {
           netIncomeGrowth3Y: stock.netIncomeGrowth3Y,
           psr: stock.psr,
           score: stock.score,
-          meetsConditions: stock.meetsConditions,
           dataSource: stock.dataSource
         })),
         
@@ -543,7 +584,6 @@ router.post('/make-analysis', async (req, res) => {
           netIncomeGrowth3Y: stock.netIncomeGrowth3Y,
           psr: stock.psr,
           score: stock.score,
-          meetsConditions: stock.meetsConditions,
           dataSource: stock.dataSource
         })),
         
