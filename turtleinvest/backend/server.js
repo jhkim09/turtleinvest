@@ -38,9 +38,19 @@ const mongoOptions = {
 };
 
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/turtleinvest', mongoOptions)
-.then(() => {
+.then(async () => {
   console.log('🐢 MongoDB 연결 성공!');
   console.log('Database: turtleinvest');
+  
+  // 서버 시작시 DART API 기업코드 미리 로딩 (속도 개선)
+  try {
+    console.log('📦 DART API 기업코드 ZIP 파일 미리 로딩 시작...');
+    const DartService = require('./services/dartService');
+    await DartService.loadAllCorpCodes();
+    console.log('✅ DART API 기업코드 미리 로딩 완료');
+  } catch (err) {
+    console.log('⚠️ DART API 기업코드 미리 로딩 실패:', err.message);
+  }
 })
 .catch(err => {
   console.log('❌ MongoDB 연결 실패 - 메모리 모드로 실행');

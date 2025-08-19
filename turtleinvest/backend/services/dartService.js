@@ -117,9 +117,12 @@ class DartService {
           const existing = corpCodeMap.get(stock.stockCode);
           
           // 부동산투자회사, 유동화전문회사 등은 제외하고 실제 기업 우선
-          const skipKeywords = ['유동화전문', '부동산투자회사', '위탁관리', '사모투자', '새마을금고', '제', '차', '호', '리츠', 'REIT'];
+          const skipKeywords = ['유동화전문', '부동산투자회사', '위탁관리', '사모투자', '새마을금고', '제', '차', '호', '리츠', 'REIT', '스팩', 'SPAC', '우선주', '신주인수권'];
           const isExistingBetter = !skipKeywords.some(keyword => existing.corpName.includes(keyword));
           const isCurrentWorse = skipKeywords.some(keyword => stock.corpName.includes(keyword));
+          
+          // 추가 조건: 더 짧고 명확한 회사명 우선 (일반적으로 모회사)
+          const isCurrentShorter = stock.corpName.length < existing.corpName.length;
           
           if (isExistingBetter && isCurrentWorse) {
             // 기존이 더 좋으므로 건너뛰기
