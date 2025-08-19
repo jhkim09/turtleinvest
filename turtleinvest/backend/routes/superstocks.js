@@ -421,4 +421,88 @@ router.get('/test-kiwoom', async (req, res) => {
   }
 });
 
+// 초경량 고속 슈퍼스톡스 검색 (Make.com 전용)
+router.post('/quick-search', async (req, res) => {
+  try {
+    const startTime = Date.now();
+    
+    const { apiKey, conditions = {} } = req.body;
+
+    // API 키 검증
+    const validApiKey = process.env.MAKE_API_KEY || 'turtle_make_api_2024';
+    if (!apiKey || apiKey !== validApiKey) {
+      return res.status(401).json({
+        success: false,
+        error: 'UNAUTHORIZED',
+        message: 'Invalid API key'
+      });
+    }
+
+    console.log('⚡ 초경량 슈퍼스톡스 검색 (Make.com 전용)...');
+
+    // 검색 조건 (더 엄격하게)
+    const searchConditions = {
+      minRevenueGrowth: conditions.minRevenueGrowth || 20,
+      minNetIncomeGrowth: conditions.minNetIncomeGrowth || 20,
+      maxPSR: conditions.maxPSR || 2.0,
+      minRevenue: conditions.minRevenue || 1000
+    };
+
+    // MongoDB에서 직접 조건 필터링 (캐시만 사용, DART 호출 없음)
+    const qualifiedStocks = await FinancialData.find({
+      dataYear: 2025,
+      dataSource: 'ESTIMATED', // 캐시된 데이터만
+      revenueGrowth3Y: { $gte: searchConditions.minRevenueGrowth },
+      netIncomeGrowth3Y: { $gte: searchConditions.minNetIncomeGrowth },
+      revenue: { $gte: searchConditions.minRevenue }
+    }).sort({ revenueGrowth3Y: -1 }).limit(20); // 상위 20개만
+
+    console.log(`📊 초경량 검색 완료: ${qualifiedStocks.length}개 발견`);
+
+    // 간단한 PSR 계산 (평균 가격 5만원 기준)
+    const results = qualifiedStocks.map(stock => {
+      const avgPrice = 50000;
+      const marketCap = avgPrice * stock.sharesOutstanding;
+      const revenueInWon = stock.revenue * 100000000;
+      const psr = revenueInWon > 0 ? marketCap / revenueInWon : 999;
+      
+      return {
+        symbol: stock.stockCode,
+        name: stock.name,
+        estimatedPrice: avgPrice,
+        revenue: stock.revenue,
+        revenueGrowth3Y: stock.revenueGrowth3Y,
+        netIncomeGrowth3Y: stock.netIncomeGrowth3Y,
+        estimatedPSR: Math.round(psr * 1000) / 1000,
+        score: stock.revenueGrowth3Y >= 30 ? 'EXCELLENT' : 'GOOD'
+      };
+    }).filter(stock => stock.estimatedPSR <= searchConditions.maxPSR);
+
+    const endTime = Date.now();
+    const processingTime = ((endTime - startTime) / 1000).toFixed(2);
+
+    // 초경량 응답
+    res.json({
+      success: true,
+      timestamp: new Date().toISOString(),
+      processingTime: processingTime + '초',
+      method: 'ULTRA_FAST_CACHE_ONLY',
+      summary: {
+        found: results.length,
+        excellentStocks: results.filter(s => s.score === 'EXCELLENT').length
+      },
+      stocks: results.slice(0, 10), // 상위 10개만
+      message: 'Make.com 전용 초고속 검색'
+    });
+
+  } catch (error) {
+    console.error('❌ 초경량 검색 실패:', error);
+    res.status(500).json({
+      success: false,
+      error: 'QUICK_SEARCH_FAILED',
+      message: error.message
+    });
+  }
+});
+
 module.exports = router;
