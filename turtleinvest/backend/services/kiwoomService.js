@@ -177,10 +177,29 @@ class KiwoomService {
         timeout: 5000 // 짧은 타임아웃
       });
 
-      if (response.data?.output?.cur_prc) {
-        const currentPrice = parseInt(response.data.output.cur_prc);
-        console.log(`💰 ${stockCode} 키움 종가: ${currentPrice}원`);
-        return currentPrice;
+      // 키움 API 응답 구조 확인
+      console.log(`🔍 ${stockCode} 키움 API 응답 구조:`, JSON.stringify(response.data, null, 2));
+
+      if (response.data?.output) {
+        const stockData = response.data.output;
+        
+        // 여러 가격 필드 시도
+        const priceFields = ['cur_prc', 'stck_prpr', 'prpr', 'price', 'close', 'last_price'];
+        let currentPrice = null;
+        
+        for (const field of priceFields) {
+          if (stockData[field] && parseInt(stockData[field]) > 0) {
+            currentPrice = parseInt(stockData[field]);
+            console.log(`💰 ${stockCode} 키움 종가 (${field}): ${currentPrice}원`);
+            break;
+          }
+        }
+        
+        if (currentPrice) {
+          return currentPrice;
+        } else {
+          console.log(`⚠️ ${stockCode} 모든 가격 필드 확인 결과 없음:`, Object.keys(stockData));
+        }
       }
 
       return null;

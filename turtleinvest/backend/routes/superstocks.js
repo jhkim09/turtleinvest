@@ -467,14 +467,16 @@ router.post('/hybrid-search', async (req, res) => {
       });
     }
 
-    // 2. 키움 API로 현재가만 빠르게 조회
+    // 2. 안정적인 가격 조회 (키움 + 전일종가 + 추정)
     const stockCodes = financialCandidates.map(stock => stock.stockCode);
-    const KiwoomService = require('../services/kiwoomService');
+    const StockPriceService = require('../services/stockPriceService');
     
-    console.log(`💰 키움 API로 ${stockCodes.length}개 종목 현재가 조회...`);
-    const priceMap = await KiwoomService.getBulkCurrentPrices(stockCodes, 5); // 5개씩 배치
+    console.log(`💰 ${stockCodes.length}개 종목 가격 조회 (키움 + 전일종가)...`);
+    const priceResult = await StockPriceService.getBulkPrices(stockCodes, false); // 키움 비활성화 (빠른 테스트)
 
-    console.log(`💰 가격 수집 완료: ${priceMap.size}개 (소요시간: ${((Date.now() - startTime)/1000).toFixed(2)}초)`);
+    console.log(`💰 가격 수집 완료: ${priceResult.summary.total}개 (키움: ${priceResult.summary.kiwoom}, 하드코딩: ${priceResult.summary.hardcoded}, 추정: ${priceResult.summary.estimated})`);
+    
+    const priceMap = priceResult.prices;
 
     // 3. 재무데이터 + 실시간 가격 조합 분석
     const results = [];
@@ -520,8 +522,7 @@ router.post('/hybrid-search', async (req, res) => {
       summary: {
         analyzed: financialCandidates.length,
         found: results.length,
-        realPrices: priceMap.size,
-        estimatedPrices: financialCandidates.length - priceMap.size
+        priceSource: priceResult.summary
       },
       stocks: results.sort((a, b) => b.revenueGrowth3Y - a.revenueGrowth3Y).slice(0, 15),
       performance: {
