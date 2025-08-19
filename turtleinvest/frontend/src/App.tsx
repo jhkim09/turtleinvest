@@ -234,7 +234,7 @@ function App() {
       <div className="loading">
         <div>🐢 TurtleInvest 로딩 중...</div>
         <div style={{marginTop: '1rem', fontSize: '0.9rem', color: '#666'}}>
-          백엔드 연결 중... (https://turtleinvest.onrender.com)
+          백엔드 연결 중... (http://localhost:5000)
         </div>
         <div style={{marginTop: '0.5rem', fontSize: '0.8rem', color: '#999'}}>
           F12 → 콘솔에서 에러 확인 가능

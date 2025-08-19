@@ -56,4 +56,263 @@ router.post('/', async (req, res) => {
   }
 });
 
+// 수동 매매 기록 추가 API (Make.com HTTP 모듈용)
+router.post('/manual', async (req, res) => {
+  try {
+    const { symbol, name, action, quantity, price, signal, executedAt } = req.body;
+    
+    // 필수 필드 검증
+    if (!symbol || !name || !action || !quantity || !price) {
+      return res.status(400).json({
+        success: false,
+        error: 'MISSING_REQUIRED_FIELDS',
+        message: '필수 필드가 누락되었습니다: symbol, name, action, quantity, price'
+      });
+    }
+    
+    // 액션 타입 검증
+    if (!['BUY', 'SELL'].includes(action.toUpperCase())) {
+      return res.status(400).json({
+        success: false,
+        error: 'INVALID_ACTION',
+        message: 'action은 BUY 또는 SELL이어야 합니다'
+      });
+    }
+    
+    console.log(`📝 수동 매매 기록 추가: ${action} ${symbol} ${quantity}주 @ ${price.toLocaleString()}원`);
+    
+    // 실현손익 계산 (매도일 경우 - 간단한 추정)
+    let realizedPL = 0;
+    if (action.toUpperCase() === 'SELL') {
+      // 매도 시 간단한 수익률 추정 (실제로는 보유 포지션 기반 계산 필요)
+      realizedPL = quantity * price * 0.02; // 2% 수익 추정
+    }
+    
+    // Trade 모델에 맞는 완전한 데이터로 저장
+    const totalAmount = quantity * price;
+    const commission = Math.round(totalAmount * 0.00015); // 0.015% 수수료
+    const tax = action.toUpperCase() === 'SELL' ? Math.round(totalAmount * 0.0023) : 0;
+    const netAmount = action.toUpperCase() === 'BUY' ? 
+      totalAmount + commission : totalAmount - commission - tax;
+    
+    const newTrade = new Trade({
+      userId: 'default',
+      symbol: symbol,
+      name: name,
+      action: action.toUpperCase(),
+      quantity: parseInt(quantity),
+      price: parseFloat(price),
+      totalAmount: totalAmount,
+      commission: commission,
+      tax: tax,
+      netAmount: netAmount,
+      tradeDate: executedAt ? new Date(executedAt) : new Date(),
+      signal: signal && ['20day_breakout', '10day_breakdown', '55day_breakout', '20day_breakdown', 'stop_loss'].includes(signal) 
+        ? signal : '20day_breakout', // 유효한 enum 값 사용
+      atr: 3000, // 기본 ATR 값 (3000원)
+      nValue: 3000, // 기본 N값 (20일 ATR)
+      riskAmount: Math.round(totalAmount * 0.02), // 2% 리스크 추정
+      realizedPL: realizedPL,
+      notes: `수동 기록: Make.com HTTP 모듈을 통한 ${action} 거래`,
+      recordedAt: new Date()
+    });
+    
+    await newTrade.save();
+    
+    console.log(`✅ 매매 기록 저장 완료: ${symbol} ${action}`);
+    
+    res.json({
+      success: true,
+      trade: {
+        id: newTrade._id,
+        symbol: newTrade.symbol,
+        name: newTrade.name,
+        action: newTrade.action,
+        quantity: newTrade.quantity,
+        price: newTrade.price,
+        executedAt: newTrade.executedAt,
+        signal: newTrade.signal,
+        realizedPL: newTrade.realizedPL
+      },
+      message: '매매 기록이 성공적으로 추가되었습니다',
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('수동 매매 기록 실패:', error);
+    res.status(500).json({
+      success: false,
+      error: 'MANUAL_TRADE_RECORD_FAILED',
+      message: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// 키움 API 거래내역 조회 및 선택적 기록 API
+router.get('/kiwoom-history', async (req, res) => {
+  try {
+    console.log('📊 키움 거래내역 조회 시작...');
+    
+    // 키움 API 인증 확인
+    if (!KiwoomService.isConnectedToKiwoom()) {
+      await KiwoomService.authenticate(process.env.KIWOOM_APP_KEY, process.env.KIWOOM_SECRET_KEY);
+    }
+    
+    if (!KiwoomService.isConnectedToKiwoom()) {
+      return res.status(503).json({
+        success: false,
+        error: 'KIWOOM_NOT_CONNECTED',
+        message: '키움 API 연결이 필요합니다'
+      });
+    }
+    
+    // 키움 당일 거래내역 조회 (체결요청 등)
+    let kiwoomTrades = [];
+    
+    try {
+      // 현재 키움 계좌의 당일 매수 내역 확인
+      const accountData = await KiwoomService.getAccountBalance();
+      if (accountData && accountData.positions) {
+        // 당일 매수 종목들을 거래내역으로 변환
+        kiwoomTrades = accountData.positions
+          .filter(pos => pos.entryDate === new Date().toISOString().split('T')[0]) // 오늘 진입
+          .map(pos => ({
+            symbol: pos.symbol,
+            name: pos.name,
+            action: 'BUY',
+            quantity: pos.quantity,
+            price: pos.avgPrice,
+            executedAt: pos.entryDate,
+            signal: 'KIWOOM_DETECTED',
+            isRecorded: false // 시스템에 미기록
+          }));
+      }
+    } catch (error) {
+      console.log('⚠️ 키움 거래내역 조회 실패:', error.message);
+    }
+    
+    // 기존 시스템 거래기록과 비교
+    const Trade = require('../models/Trade');
+    const systemTrades = await Trade.find({ userId: 'default' })
+      .sort({ executedAt: -1 })
+      .limit(20);
+    
+    // 키움 거래 중 시스템에 미기록된 것들 찾기
+    const unrecordedTrades = kiwoomTrades.filter(kTrade => 
+      !systemTrades.some(sTrade => 
+        sTrade.symbol === kTrade.symbol && 
+        sTrade.executedAt.toISOString().split('T')[0] === kTrade.executedAt
+      )
+    );
+    
+    res.json({
+      success: true,
+      data: {
+        kiwoomTrades: kiwoomTrades,
+        systemTrades: systemTrades.map(trade => ({
+          id: trade._id,
+          symbol: trade.symbol,
+          name: trade.name,
+          action: trade.action,
+          quantity: trade.quantity,
+          price: trade.price,
+          executedAt: trade.executedAt,
+          signal: trade.signal,
+          realizedPL: trade.realizedPL,
+          source: trade.metadata?.source || 'system'
+        })),
+        unrecordedTrades: unrecordedTrades,
+        summary: {
+          kiwoomTotal: kiwoomTrades.length,
+          systemTotal: systemTrades.length,
+          unrecorded: unrecordedTrades.length
+        }
+      },
+      message: `키움 거래내역 ${kiwoomTrades.length}개, 시스템 기록 ${systemTrades.length}개`,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('거래내역 조회 실패:', error);
+    res.status(500).json({
+      success: false,
+      error: 'TRADE_HISTORY_FAILED',
+      message: error.message
+    });
+  }
+});
+
+// 키움 거래내역을 시스템에 일괄 등록 API
+router.post('/import-kiwoom', async (req, res) => {
+  try {
+    const { trades } = req.body; // 선택된 거래내역들
+    
+    if (!trades || !Array.isArray(trades)) {
+      return res.status(400).json({
+        success: false,
+        message: '거래내역 배열이 필요합니다'
+      });
+    }
+    
+    console.log(`📝 키움 거래내역 ${trades.length}개 일괄 등록 시작...`);
+    
+    const savedTrades = [];
+    
+    for (const tradeData of trades) {
+      try {
+        const newTrade = new Trade({
+          userId: 'default',
+          symbol: tradeData.symbol,
+          name: tradeData.name,
+          action: tradeData.action,
+          quantity: tradeData.quantity,
+          price: tradeData.price,
+          executedAt: new Date(tradeData.executedAt),
+          realizedPL: tradeData.realizedPL || 0,
+          signal: tradeData.signal || 'KIWOOM_IMPORT',
+          metadata: {
+            recordedBy: 'kiwoom_import',
+            recordedAt: new Date().toISOString(),
+            source: 'kiwoom_api'
+          }
+        });
+        
+        await newTrade.save();
+        savedTrades.push(newTrade);
+        
+      } catch (saveError) {
+        console.error(`거래 저장 실패 (${tradeData.symbol}):`, saveError.message);
+      }
+    }
+    
+    console.log(`✅ 키움 거래내역 ${savedTrades.length}개 등록 완료`);
+    
+    res.json({
+      success: true,
+      imported: savedTrades.length,
+      total: trades.length,
+      trades: savedTrades.map(trade => ({
+        id: trade._id,
+        symbol: trade.symbol,
+        name: trade.name,
+        action: trade.action,
+        quantity: trade.quantity,
+        price: trade.price,
+        executedAt: trade.executedAt
+      })),
+      message: `${savedTrades.length}개 거래내역이 시스템에 등록되었습니다`,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('거래내역 일괄 등록 실패:', error);
+    res.status(500).json({
+      success: false,
+      error: 'IMPORT_TRADES_FAILED',
+      message: error.message
+    });
+  }
+});
+
 module.exports = router;
