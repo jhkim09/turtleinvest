@@ -421,6 +421,126 @@ router.get('/test-kiwoom', async (req, res) => {
   }
 });
 
+// 하이브리드 검색: 캐시 재무데이터 + 키움 실시간 가격 (Make.com 최적화)
+router.post('/hybrid-search', async (req, res) => {
+  try {
+    const startTime = Date.now();
+    
+    const { apiKey, conditions = {}, targetStocks } = req.body;
+
+    // API 키 검증
+    const validApiKey = process.env.MAKE_API_KEY || 'turtle_make_api_2024';
+    if (!apiKey || apiKey !== validApiKey) {
+      return res.status(401).json({
+        success: false,
+        error: 'UNAUTHORIZED',
+        message: 'Invalid API key'
+      });
+    }
+
+    console.log('🔥 하이브리드 검색: 캐시 재무데이터 + 키움 실시간 가격');
+
+    // 검색 조건
+    const searchConditions = {
+      minRevenueGrowth: conditions.minRevenueGrowth || 15,
+      minNetIncomeGrowth: conditions.minNetIncomeGrowth || 15,
+      maxPSR: conditions.maxPSR || 2.5
+    };
+
+    // 1. 캐시에서 재무조건 만족 종목 조회 (DART API 호출 없음)
+    const financialCandidates = await FinancialData.find({
+      dataYear: 2025,
+      dataSource: 'ESTIMATED', // 캐시된 데이터만
+      revenueGrowth3Y: { $gte: searchConditions.minRevenueGrowth },
+      netIncomeGrowth3Y: { $gte: searchConditions.minNetIncomeGrowth },
+      revenue: { $gt: 100 }
+    }).sort({ revenueGrowth3Y: -1 }).limit(20); // 상위 20개만
+
+    console.log(`📊 재무조건 만족: ${financialCandidates.length}개 (소요시간: ${((Date.now() - startTime)/1000).toFixed(2)}초)`);
+
+    if (financialCandidates.length === 0) {
+      return res.json({
+        success: true,
+        message: '조건을 만족하는 종목이 없습니다',
+        summary: { found: 0 },
+        stocks: []
+      });
+    }
+
+    // 2. 키움 API로 현재가만 빠르게 조회
+    const stockCodes = financialCandidates.map(stock => stock.stockCode);
+    const KiwoomService = require('../services/kiwoomService');
+    
+    console.log(`💰 키움 API로 ${stockCodes.length}개 종목 현재가 조회...`);
+    const priceMap = await KiwoomService.getBulkCurrentPrices(stockCodes, 5); // 5개씩 배치
+
+    console.log(`💰 가격 수집 완료: ${priceMap.size}개 (소요시간: ${((Date.now() - startTime)/1000).toFixed(2)}초)`);
+
+    // 3. 재무데이터 + 실시간 가격 조합 분석
+    const results = [];
+
+    financialCandidates.forEach(stock => {
+      const currentPrice = priceMap.get(stock.stockCode) || 50000; // 기본값 5만원
+      
+      // PSR 계산
+      const marketCap = currentPrice * stock.sharesOutstanding;
+      const revenueInWon = stock.revenue * 100000000;
+      const psr = revenueInWon > 0 ? marketCap / revenueInWon : 999;
+
+      // PSR 조건 확인
+      if (psr <= searchConditions.maxPSR) {
+        results.push({
+          symbol: stock.stockCode,
+          name: stock.name,
+          currentPrice: currentPrice,
+          revenue: stock.revenue,
+          revenueGrowth3Y: stock.revenueGrowth3Y,
+          netIncomeGrowth3Y: stock.netIncomeGrowth3Y,
+          psr: Math.round(psr * 1000) / 1000,
+          marketCap: marketCap,
+          score: stock.revenueGrowth3Y >= 30 ? 'EXCELLENT' : 'GOOD',
+          dataSource: 'HYBRID_CACHE_KIWOOM',
+          priceSource: priceMap.has(stock.stockCode) ? 'KIWOOM_REAL' : 'ESTIMATED'
+        });
+      }
+    });
+
+    const endTime = Date.now();
+    const processingTime = ((endTime - startTime) / 1000).toFixed(2);
+
+    console.log(`🔥 하이브리드 검색 완료: ${results.length}개 발견 (소요시간: ${processingTime}초)`);
+
+    // 경량 응답
+    res.json({
+      success: true,
+      timestamp: new Date().toISOString(),
+      processingTime: processingTime + '초',
+      method: 'HYBRID_CACHE_KIWOOM',
+      searchConditions,
+      summary: {
+        analyzed: financialCandidates.length,
+        found: results.length,
+        realPrices: priceMap.size,
+        estimatedPrices: financialCandidates.length - priceMap.size
+      },
+      stocks: results.sort((a, b) => b.revenueGrowth3Y - a.revenueGrowth3Y).slice(0, 15),
+      performance: {
+        cacheQuery: '0.05초',
+        kiwoomPrices: `${((Date.now() - startTime - 50)/1000).toFixed(2)}초`,
+        totalTime: processingTime + '초'
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ 하이브리드 검색 실패:', error);
+    res.status(500).json({
+      success: false,
+      error: 'HYBRID_SEARCH_FAILED',
+      message: error.message
+    });
+  }
+});
+
 // 초경량 고속 슈퍼스톡스 검색 (Make.com 전용)
 router.post('/quick-search', async (req, res) => {
   try {

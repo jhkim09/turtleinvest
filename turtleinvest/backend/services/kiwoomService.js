@@ -145,6 +145,86 @@ class KiwoomService {
     }
   }
 
+  // 경량 현재가 조회 (가격 정보만)
+  async getCurrentPriceOnly(stockCode) {
+    try {
+      if (!this.isConnected) {
+        const authenticated = await this.authenticate(
+          process.env.KIWOOM_APP_KEY, 
+          process.env.KIWOOM_SECRET_KEY
+        );
+        if (!authenticated) return null;
+      }
+
+      const url = `${this.useMock ? this.mockURL : this.baseURL}/v1/market/trade/ka10001`;
+      
+      const response = await axios.post(url, {
+        stk_cd: stockCode.padStart(6, '0')
+      }, {
+        headers: {
+          'Content-Type': 'application/json;charset=UTF-8',
+          'Authorization': `Bearer ${this.accessToken}`,
+          'appkey': process.env.KIWOOM_APP_KEY,
+          'appsecret': process.env.KIWOOM_SECRET_KEY,
+          'custtype': 'P',
+          'tr_id': 'ka10001',
+          'tr_cont': 'N'
+        },
+        timeout: 5000 // 짧은 타임아웃
+      });
+
+      if (response.data?.output?.stck_prpr) {
+        const currentPrice = parseInt(response.data.output.stck_prpr);
+        console.log(`💰 ${stockCode} 키움 현재가: ${currentPrice}원`);
+        return currentPrice;
+      }
+
+      return null;
+    } catch (error) {
+      console.log(`⚠️ ${stockCode} 키움 가격 조회 실패: ${error.message}`);
+      return null;
+    }
+  }
+
+  // 다중 종목 현재가 고속 조회 (가격만)
+  async getBulkCurrentPrices(stockCodes, batchSize = 10) {
+    try {
+      console.log(`💰 키움 API로 ${stockCodes.length}개 종목 현재가 고속 조회...`);
+      
+      const results = new Map();
+      
+      // 작은 배치로 빠른 처리
+      for (let i = 0; i < stockCodes.length; i += batchSize) {
+        const batch = stockCodes.slice(i, i + batchSize);
+        
+        const batchPromises = batch.map(async (stockCode) => {
+          const price = await this.getCurrentPriceOnly(stockCode);
+          return { stockCode, price };
+        });
+
+        const batchResults = await Promise.all(batchPromises);
+        
+        batchResults.forEach(result => {
+          if (result.price) {
+            results.set(result.stockCode, result.price);
+          }
+        });
+
+        // 짧은 대기
+        if (i + batchSize < stockCodes.length) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+
+      console.log(`✅ 키움 가격 조회 완료: ${results.size}개 성공`);
+      return results;
+
+    } catch (error) {
+      console.error('❌ 키움 대량 가격 조회 실패:', error.message);
+      return new Map();
+    }
+  }
+
   // OAuth 2.0 토큰 발급
   async authenticate(appKey, secretKey) {
     try {
