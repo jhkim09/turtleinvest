@@ -72,8 +72,24 @@ class SuperstocksAnalyzer {
     try {
       console.log(`📊 ${symbol} 슈퍼스톡스 분석 시작...`);
       
-      // 1. 현재가 조회 (Yahoo Finance API - 실제 시장가)
-      const currentPrice = await YahooFinanceService.getCurrentPrice(symbol);
+      // 1. 현재가 조회 (키움 API 우선, Yahoo Finance 대안)
+      // 키움 API 인증 확인 및 자동 인증
+      if (!KiwoomService.isConnectedToKiwoom()) {
+        console.log(`🔐 ${symbol} 분석을 위한 키움 API 인증 시도...`);
+        try {
+          await KiwoomService.authenticate(process.env.KIWOOM_APP_KEY, process.env.KIWOOM_SECRET_KEY);
+        } catch (authError) {
+          console.log(`⚠️ ${symbol} 키움 인증 실패: ${authError.message}`);
+        }
+      }
+      
+      let currentPrice = await KiwoomService.getCurrentPrice(symbol);
+      
+      // 키움 실패시 Yahoo Finance 사용
+      if (!currentPrice) {
+        console.log(`⚠️ ${symbol} 키움 가격 조회 실패, Yahoo Finance 사용`);
+        currentPrice = await YahooFinanceService.getCurrentPrice(symbol);
+      }
       
       if (!currentPrice) {
         console.log(`❌ ${symbol} 현재가 조회 실패`);
@@ -414,7 +430,7 @@ class SuperstocksAnalyzer {
     else return 'POOR';
   }
   
-  // 코스피 50개 + 코스닥 50개 종목 (총 100개)
+  // 코스피 50개 + 코스닥 우량주 30개 종목 (총 80개) - Yahoo Finance 정확도 고려
   getDefaultStockList() {
     return [
       // === 코스피 상위 50종목 ===

@@ -80,38 +80,50 @@ class KiwoomService {
     }
   }
   
-  // 주식 현재가 조회
+  // 주식 현재가 조회 (일별주가 API 사용 - 정확한 종가)
   async getCurrentPrice(symbol) {
     try {
       if (!this.isConnected) {
         return this.getSimulationPrice(symbol);
       }
       
-      // 실제 키움 API 호출 - 주식현재가시세
-      const url = `${this.useMock ? this.mockURL : this.baseURL}/uapi/domestic-stock/v1/quotations/inquire-price`;
+      // 키움 일별주가 조회 API (ka10086) - 정확한 당일 종가
+      const url = `${this.useMock ? this.mockURL : this.baseURL}/api/dostk/mrkcond`;
       
-      const response = await axios.get(url, {
+      // 오늘 날짜 (YYYYMMDD)
+      const today = new Date();
+      const queryDate = today.getFullYear().toString() + 
+                       (today.getMonth() + 1).toString().padStart(2, '0') + 
+                       today.getDate().toString().padStart(2, '0');
+      
+      const response = await axios.post(url, {
+        stk_cd: symbol,
+        qry_dt: queryDate,
+        indc_tp: '0'
+      }, {
         headers: {
-          'Authorization': `Bearer ${this.accessToken}`,
-          'appkey': process.env.KIWOOM_APP_KEY,
-          'appsecret': process.env.KIWOOM_SECRET_KEY,
-          'tr_id': 'FHKST01010100'
+          'Content-Type': 'application/json;charset=UTF-8',
+          'authorization': `Bearer ${this.accessToken}`,
+          'cont-yn': 'N',
+          'next-key': '',
+          'api-id': 'ka10086'
         },
-        params: {
-          'fid_cond_mrkt_div_code': 'J',
-          'fid_input_iscd': symbol
-        }
+        timeout: 10000
       });
       
-      if (response.data.rt_cd === '0') {
-        return parseInt(response.data.output.stck_prpr); // 주식현재가
+      if (response.data.return_code === 0 && response.data.daly_stkpc?.length > 0) {
+        // 첫 번째 데이터 (최신일)의 종가
+        const latestData = response.data.daly_stkpc[0];
+        const closePrice = parseInt(latestData.close_pric.replace(/[+-]/g, ''));
+        
+        console.log(`✅ 키움 ${symbol} 종가: ${closePrice.toLocaleString()}원 (${latestData.date})`);
+        return closePrice;
       } else {
-        throw new Error(`API 오류: ${response.data.msg1}`);
+        throw new Error(`키움 일별주가 조회 실패: ${response.data.return_msg}`);
       }
       
     } catch (error) {
-      console.error(`가격 조회 실패 (${symbol}):`, error);
-      // 실패시 시뮬레이션 데이터 반환
+      console.error(`키움 가격 조회 실패 (${symbol}):`, error.message);
       return this.getSimulationPrice(symbol);
     }
   }
