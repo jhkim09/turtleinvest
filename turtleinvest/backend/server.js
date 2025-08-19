@@ -11,6 +11,7 @@ const settingsRoutes = require('./routes/settings');
 const signalRoutes = require('./routes/signals');
 const kiwoomRoutes = require('./routes/kiwoom');
 const testRoutes = require('./routes/test');
+const financialDataRoutes = require('./routes/financialData');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -54,6 +55,7 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/signals', signalRoutes);
 app.use('/api/kiwoom', kiwoomRoutes);
 app.use('/api/test', testRoutes);
+app.use('/api/financial-data', financialDataRoutes);
 
 // Health Check
 app.get('/api/health', (req, res) => {
@@ -83,6 +85,35 @@ cron.schedule('0 8 * * 1-5', async () => {
     console.log('✅ 일일 분석 및 알람 완료');
   } catch (error) {
     console.error('❌ 일일 분석 실패:', error);
+  }
+}, {
+  timezone: "Asia/Seoul"
+});
+
+// 연 1회 재무데이터 업데이트 (4월 1일 오전 6시)
+cron.schedule('0 6 1 4 *', async () => {
+  console.log('📅 연간 재무데이터 업데이트 시작 (4월 1일)...');
+  try {
+    const FinancialDataCacheService = require('./services/financialDataCacheService');
+    const SuperstocksAnalyzer = require('./services/superstocksAnalyzer');
+    
+    // 1. 데이터 년도 업데이트 체크
+    const yearUpdated = FinancialDataCacheService.checkDataYearUpdate();
+    if (yearUpdated) {
+      console.log('📊 새로운 재무데이터 수집년도로 업데이트됨');
+    }
+    
+    // 2. 슈퍼스톡스 100개 종목 재무데이터 일괄 수집
+    const stockCodes = SuperstocksAnalyzer.getDefaultStockList();
+    const results = await FinancialDataCacheService.bulkCollectFinancialData(stockCodes, 8);
+    
+    // 3. 오래된 캐시 데이터 정리 (2년 이상)
+    const cleanedCount = await FinancialDataCacheService.cleanupOldCache(2);
+    
+    console.log(`✅ 연간 재무데이터 업데이트 완료: ${results.success}개 수집, ${cleanedCount}개 정리`);
+    
+  } catch (error) {
+    console.error('❌ 연간 재무데이터 업데이트 실패:', error);
   }
 }, {
   timezone: "Asia/Seoul"

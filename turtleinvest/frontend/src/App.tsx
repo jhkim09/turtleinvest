@@ -14,6 +14,7 @@ interface Portfolio {
 }
 
 interface TradeRecord {
+  _id?: string;
   symbol: string;
   name: string;
   action: string;
@@ -622,7 +623,7 @@ function App() {
                       <tr key={index}>
                         <td>
                           <small style={{fontFamily: 'monospace', fontSize: '0.8rem'}}>
-                            {trade._id?.substring(0, 8) || `T${index.toString().padStart(3, '0')}`}
+                            {(trade as any)._id?.substring(0, 8) || `T${index.toString().padStart(3, '0')}`}
                           </small>
                         </td>
                         <td>

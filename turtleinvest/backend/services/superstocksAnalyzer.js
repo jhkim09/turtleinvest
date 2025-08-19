@@ -1,6 +1,7 @@
 const KiwoomService = require('./kiwoomService');
 const DartService = require('./dartService');
 const YahooFinanceService = require('./yahooFinanceService');
+const FinancialDataCacheService = require('./financialDataCacheService');
 
 class SuperstocksAnalyzer {
   
@@ -108,53 +109,56 @@ class SuperstocksAnalyzer {
         return null;
       }
       
-      // 2. DART API로 실제 재무데이터 조회 (야후파이낸스 제거)
+      // 2. 캐시된 재무데이터 조회 (DB 우선, DART API 백업)
       let financialData;
       try {
-        financialData = await DartService.analyzeStockFinancials(symbol);
-        if (!financialData || !financialData.stockCode) {
-          console.log(`⚠️ ${symbol} DART 재무데이터 없음, 건너뛰기`);
-          return null; // 야후 파이낸스 보완 제거, 순수 DART 데이터만 사용
+        financialData = await FinancialDataCacheService.getCachedFinancialData(symbol);
+        if (!financialData) {
+          console.log(`⚠️ ${symbol} 재무데이터 수집 실패, 건너뛰기`);
+          return null;
         }
-        console.log(`✅ ${symbol} DART 재무데이터 사용 - 매출성장률: ${financialData.revenueGrowth3Y}%, 순이익성장률: ${financialData.netIncomeGrowth3Y}%`);
+        console.log(`✅ ${symbol} 재무데이터 사용 (${financialData.dataSource}) - 매출성장률: ${financialData.revenueGrowth3Y}%, 순이익성장률: ${financialData.netIncomeGrowth3Y}%`);
       } catch (error) {
-        console.log(`⚠️ ${symbol} DART API 호출 실패: ${error.message}, 건너뛰기`);
-        return null; // DART API 실패시 null 반환
+        console.log(`⚠️ ${symbol} 재무데이터 조회 실패: ${error.message}, 건너뛰기`);
+        return null;
       }
       
-      // 4. 실제 상장주식수 조회 (DART API 우선, Yahoo Finance 백업)
-      let actualShares = null;
+      // 3. 상장주식수 조회 (캐시 우선, DART/Yahoo 백업)
+      let actualShares = financialData.sharesOutstanding;
       
-      // DART API에서 상장주식수 우선 조회
-      try {
-        actualShares = await DartService.getSharesOutstanding(symbol, 2024);
-        if (actualShares) {
-          console.log(`📊 ${symbol} DART 상장주식수 사용: ${actualShares.toLocaleString()}주`);
-        }
-      } catch (error) {
-        console.log(`⚠️ ${symbol} DART 상장주식수 조회 실패: ${error.message}`);
-      }
-      
-      // DART 실패시에만 Yahoo Finance 백업 사용
-      let yahooInfo = null;
-      if (!actualShares) {
+      if (actualShares && actualShares > 0) {
+        console.log(`📊 ${symbol} 캐시된 상장주식수 사용: ${actualShares.toLocaleString()}주`);
+      } else {
+        // 캐시에 없으면 DART API에서 조회
         try {
-          yahooInfo = await YahooFinanceService.getStockInfo(symbol);
-          if (yahooInfo && yahooInfo.sharesOutstanding) {
-            actualShares = yahooInfo.sharesOutstanding;
-            console.log(`📊 ${symbol} Yahoo 백업 상장주식수 사용: ${actualShares.toLocaleString()}주`);
-          } else {
-            console.log(`⚠️ ${symbol} Yahoo 상장주식수도 없음`);
+          actualShares = await DartService.getSharesOutstanding(symbol, 2024);
+          if (actualShares) {
+            console.log(`📊 ${symbol} DART 상장주식수 사용: ${actualShares.toLocaleString()}주`);
           }
         } catch (error) {
-          console.log(`⚠️ ${symbol} Yahoo Finance 백업 조회도 실패: ${error.message}`);
+          console.log(`⚠️ ${symbol} DART 상장주식수 조회 실패: ${error.message}`);
         }
-      }
-      
-      // 둘 다 실패하면 추정값 사용
-      if (!actualShares) {
-        actualShares = this.estimateSharesOutstanding(symbol, currentPrice, financialData.revenue);
-        console.log(`📊 ${symbol} 추정 상장주식수 사용: ${actualShares.toLocaleString()}주`);
+        
+        // DART도 실패시에만 Yahoo Finance 백업 사용
+        if (!actualShares) {
+          try {
+            const yahooInfo = await YahooFinanceService.getStockInfo(symbol);
+            if (yahooInfo && yahooInfo.sharesOutstanding) {
+              actualShares = yahooInfo.sharesOutstanding;
+              console.log(`📊 ${symbol} Yahoo 백업 상장주식수 사용: ${actualShares.toLocaleString()}주`);
+            } else {
+              console.log(`⚠️ ${symbol} Yahoo 상장주식수도 없음`);
+            }
+          } catch (error) {
+            console.log(`⚠️ ${symbol} Yahoo Finance 백업 조회도 실패: ${error.message}`);
+          }
+        }
+        
+        // 모든 방법 실패시 추정값 사용
+        if (!actualShares) {
+          actualShares = this.estimateSharesOutstanding(symbol, currentPrice, financialData.revenue);
+          console.log(`📊 ${symbol} 추정 상장주식수 사용: ${actualShares.toLocaleString()}주`);
+        }
       }
       
       // PSR 계산 (시가총액 / 매출액)
