@@ -98,7 +98,7 @@ class DartService {
           const existing = corpCodeMap.get(stock.stockCode);
           
           // 부동산투자회사, 유동화전문회사 등은 제외하고 실제 기업 우선
-          const skipKeywords = ['유동화전문', '부동산투자회사', '위탁관리', '사모투자', '새마을금고'];
+          const skipKeywords = ['유동화전문', '부동산투자회사', '위탁관리', '사모투자', '새마을금고', '제', '차', '호', '리츠', 'REIT'];
           const isExistingBetter = !skipKeywords.some(keyword => existing.corpName.includes(keyword));
           const isCurrentWorse = skipKeywords.some(keyword => stock.corpName.includes(keyword));
           

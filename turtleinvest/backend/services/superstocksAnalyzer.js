@@ -69,30 +69,80 @@ class SuperstocksAnalyzer {
       // 1. 현재가 조회 (키움 API)
       const currentPrice = await KiwoomService.getCurrentPrice(symbol);
       
-      // 2. DART API로 실제 재무데이터 조회
+      // 2. DART API로 실제 재무데이터 조회 (Yahoo Finance 보완)
       let financialData;
       try {
         financialData = await DartService.analyzeStockFinancials(symbol);
         if (!financialData || !financialData.stockCode) {
-          console.log(`⚠️ ${symbol} DART 데이터 없음, 건너뛰기`);
-          return null; // 실제 데이터가 없으면 null 반환
+          console.log(`⚠️ ${symbol} DART 데이터 없음, Yahoo Finance로 보완 시도`);
+          
+          // Yahoo Finance에서 재무데이터 보완
+          const YahooFinanceService = require('./yahooFinanceService');
+          const yahooInfo = await YahooFinanceService.getStockInfo(symbol);
+          if (yahooInfo && yahooInfo.totalRevenue) {
+            console.log(`📊 ${symbol} Yahoo Finance 재무데이터 사용`);
+            // Yahoo 데이터를 DART 형식으로 변환 (간단히)
+            financialData = {
+              stockCode: symbol,
+              name: this.getStockName(symbol),
+              revenue: yahooInfo.totalRevenue / 100000000, // 원 → 억원
+              revenueGrowth3Y: 10, // 기본값 (Yahoo에서 성장률 없음)
+              netIncomeGrowth3Y: 10 // 기본값
+            };
+          } else {
+            console.log(`⚠️ ${symbol} 모든 데이터 소스 실패, 건너뛰기`);
+            return null;
+          }
         }
       } catch (error) {
         console.log(`⚠️ ${symbol} DART API 호출 실패: ${error.message}, 건너뛰기`);
         return null; // DART API 실패시 null 반환
       }
       
-      // 4. 실제 상장주식수 조회 (DART 우선, Yahoo Finance 대안)
-      let actualShares = await DartService.getSharesOutstanding(symbol, 2024);
+      // 4. 실제 상장주식수 조회 (Yahoo Finance 우선, DART 대안)
+      const YahooFinanceService = require('./yahooFinanceService');
+      let actualShares = null;
+      let yahooInfo = null;
       
-      // DART에서 못 가져오면 Yahoo Finance 시도
-      if (!actualShares) {
-        const YahooFinanceService = require('./yahooFinanceService');
-        const yahooInfo = await YahooFinanceService.getStockInfo(symbol);
+      // Yahoo Finance에서 주식 정보 조회 (PSR도 함께)
+      try {
+        yahooInfo = await YahooFinanceService.getStockInfo(symbol);
         if (yahooInfo && yahooInfo.sharesOutstanding) {
           actualShares = yahooInfo.sharesOutstanding;
           console.log(`📊 ${symbol} Yahoo 상장주식수 사용: ${actualShares.toLocaleString()}주`);
+          
+          // Yahoo Finance PSR이 있으면 우선 사용
+          if (yahooInfo.priceToSalesTrailing12Months && yahooInfo.priceToSalesTrailing12Months > 0) {
+            console.log(`💡 ${symbol} Yahoo PSR 직접 사용: ${yahooInfo.priceToSalesTrailing12Months.toFixed(3)}`);
+            
+            return {
+              symbol: symbol,
+              name: financialData.name || this.getStockName(symbol),
+              currentPrice: currentPrice,
+              revenueGrowth3Y: financialData.revenueGrowth3Y,
+              netIncomeGrowth3Y: financialData.netIncomeGrowth3Y,
+              psr: Math.round(yahooInfo.priceToSalesTrailing12Months * 1000) / 1000,
+              marketCap: yahooInfo.marketCap || currentPrice * actualShares,
+              revenue: financialData.revenue,
+              netIncome: financialData.netIncome,
+              dataSource: 'YAHOO_HYBRID',
+              score: this.calculateScore(financialData.revenueGrowth3Y, financialData.netIncomeGrowth3Y, yahooInfo.priceToSalesTrailing12Months),
+              meetsConditions: (
+                financialData.revenueGrowth3Y >= this.minRevenueGrowth &&
+                financialData.netIncomeGrowth3Y >= this.minNetIncomeGrowth &&
+                yahooInfo.priceToSalesTrailing12Months <= this.maxPSR
+              ),
+              timestamp: new Date().toISOString()
+            };
+          }
         }
+      } catch (error) {
+        console.log(`⚠️ ${symbol} Yahoo Finance 조회 실패: ${error.message}`);
+      }
+      
+      // Yahoo에서 실패하면 DART 시도
+      if (!actualShares) {
+        actualShares = await DartService.getSharesOutstanding(symbol, 2024);
       }
       
       // 둘 다 실패하면 추정값 사용
