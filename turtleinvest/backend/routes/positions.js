@@ -89,6 +89,17 @@ router.get('/', async (req, res) => {
     let displayPortfolio = { ...portfolio.toObject() }; // MongoDB 데이터를 기본값으로
     
     try {
+      // 키움 API 자동 연결 시도
+      if (!KiwoomService.isConnectedToKiwoom()) {
+        console.log('🔐 키움 API 자동 인증 시도...');
+        try {
+          await KiwoomService.authenticate(process.env.KIWOOM_APP_KEY, process.env.KIWOOM_SECRET_KEY);
+          console.log('✅ 키움 API 자동 인증 성공');
+        } catch (authError) {
+          console.log('⚠️ 키움 자동 인증 실패, 시뮬레이션 모드 유지');
+        }
+      }
+      
       if (KiwoomService.isConnectedToKiwoom()) {
         kiwoomAccountData = await KiwoomService.getAccountBalance();
         if (kiwoomAccountData) {
