@@ -144,7 +144,6 @@ class StockListService {
     
     return `${industryPrefix}_${symbol}`;
   }
-  }
   
   // 통계 정보
   static getStatistics() {
