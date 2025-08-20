@@ -459,11 +459,14 @@ router.post('/make-analysis', async (req, res) => {
           const revenueInWon = stock.revenue * 100000000;
           const psr = revenueInWon > 0 ? marketCap / revenueInWon : 999;
 
+          // 실제 회사명 사용 (SuperstocksAnalyzer에서 가져오기)
+          const realStockName = SuperstocksAnalyzer.getStockName(stock.stockCode);
+
           // PSR 조건 확인 (현실적 기준 2.5)
           if (psr <= 2.5) {
             superstocks.push({
               symbol: stock.stockCode,
-              name: stock.name,
+              name: realStockName, // 실제 회사명 사용
               currentPrice: currentPrice,
               revenueGrowth3Y: stock.revenueGrowth3Y,
               netIncomeGrowth3Y: stock.netIncomeGrowth3Y,
