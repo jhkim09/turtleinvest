@@ -449,8 +449,11 @@ router.post('/make-analysis', async (req, res) => {
       const stockCodes = financialCandidates.map(stock => stock.stockCode);
       const priceResult = await StockPriceService.getBulkPrices(stockCodes, false);
 
-      // 3. 실제 가격이 있는 종목만 분석
-      financialCandidates.forEach(stock => {
+      // 3. 실제 가격이 있는 종목만 분석 (캐시된 회사명 사용)
+      const StockNameCacheService = require('../services/stockNameCacheService');
+      const nameMap = await StockNameCacheService.getBulkStockNames(stockCodes);
+
+      for (const stock of financialCandidates) {
         const currentPrice = priceResult.prices.get(stock.stockCode);
         
         if (currentPrice && currentPrice > 1000) {
@@ -460,8 +463,7 @@ router.post('/make-analysis', async (req, res) => {
           const psr = revenueInWon > 0 ? marketCap / revenueInWon : 999;
 
           // 캐시된 실제 회사명 사용
-          const StockNameCacheService = require('../services/stockNameCacheService');
-          const realStockName = await StockNameCacheService.getStockName(stock.stockCode);
+          const realStockName = nameMap.get(stock.stockCode) || `ST_${stock.stockCode}`;
 
           // PSR 조건 확인 (현실적 기준 2.5)
           if (psr <= 2.5) {
@@ -482,7 +484,7 @@ router.post('/make-analysis', async (req, res) => {
             });
           }
         }
-      });
+      }
 
       console.log(`✅ 하이브리드 슈퍼스톡스 분석 완료: ${superstocks.length}개 결과`);
     } catch (superstocksError) {
