@@ -40,16 +40,13 @@ class StockPriceService {
       '108860': 3200,    // 셀바스AI (수정)
       '064290': 28000,   // 인텍플러스 (수정)
       
-      // 네이버 금융에서 확인된 실제 가격들 (2024.08.19-20)
+      // 네이버 금융에서 확인된 실제 가격들만 (2024.08.19-20)
       '032500': 11180,   // 케이엠더블유 (네이버 확인)
       '200670': 52100,   // 휴메딕스 (네이버 확인)  
-      '290650': 29200,   // 엘앤씨바이오 (네이버 확인)
-      '900130': 15000,   // 알에스텍 (추정)
-      '300080': 8500,    // 플리토 (추정)
-      '298690': 12000,   // 에이스토리 (추정)
-      '183190': 18000,   // 아이에스동서 (추정)
-      '215200': 45000,   // 메가스터디교육 (추정)
-      '252990': 8200     // 샘씨엔에스 (추정)
+      '290650': 29200    // 엘앤씨바이오 (네이버 확인)
+      
+      // 추정 가격 제거: 검증된 가격만 사용
+      // 가격이 없는 종목은 분석에서 제외됨
     };
   }
 
@@ -71,29 +68,17 @@ class StockPriceService {
         return lastPrice;
       }
 
-      // 3차: 업종별 추정가격
-      const estimatedPrice = this.estimatePriceByIndustry(stockCode);
-      console.log(`📊 ${stockCode} 추정 가격 사용: ${estimatedPrice}원`);
-      return estimatedPrice;
+      // 3차: 가격 정보 없음 (추정 가격 사용하지 않음)
+      console.log(`❌ ${stockCode} 검증된 가격 정보 없음, 분석에서 제외`);
+      return null;
 
     } catch (error) {
       console.error(`❌ ${stockCode} 가격 조회 실패:`, error.message);
-      return this.lastClosingPrices[stockCode] || 50000;
+      return this.lastClosingPrices[stockCode] || null; // 추정 가격 대신 null 반환
     }
   }
 
-  // 업종별 추정 가격
-  estimatePriceByIndustry(stockCode) {
-    // 종목코드 패턴으로 업종 추정
-    const firstDigit = stockCode.charAt(0);
-    
-    if (firstDigit === '3') return 45000;  // 코스닥 IT/게임 (보통 2-8만원)
-    if (firstDigit === '2') return 35000;  // 코스닥 중소형 (보통 1-5만원) 
-    if (firstDigit === '1') return 55000;  // 코스닥 바이오 (보통 3-8만원)
-    if (firstDigit === '0') return 85000;  // 코스피 대형주 (보통 5-15만원)
-    
-    return 50000; // 기본값
-  }
+  // 추정 가격 함수 제거 - 검증된 데이터만 사용
 
   // 다중 종목 가격 조회 (하이브리드 방식)
   async getBulkPrices(stockCodes, useKiwoom = true) {
@@ -118,20 +103,22 @@ class StockPriceService {
         }
       }
 
-      // 키움에서 못 가져온 종목들 처리
+      // 키움에서 못 가져온 종목들 처리 (검증된 가격만)
       for (const stockCode of stockCodes) {
         if (!results.has(stockCode)) {
-          const price = await this.getCurrentPrice(stockCode);
-          const source = this.lastClosingPrices[stockCode] ? 'HARDCODED' : 'ESTIMATED';
+          const price = this.lastClosingPrices[stockCode]; // 하드코딩된 것만
           
-          results.set(stockCode, { price, source });
-          
-          if (source === 'HARDCODED') hardcodedUsed++;
-          else estimatedUsed++;
+          if (price) {
+            results.set(stockCode, { price, source: 'VERIFIED' });
+            hardcodedUsed++;
+          } else {
+            console.log(`⏭️ ${stockCode} 검증된 가격 없어서 제외`);
+            // 결과에 추가하지 않음 (분석에서 완전 제외)
+          }
         }
       }
 
-      console.log(`💰 가격 수집 완료: 키움 ${kiwoomSuccess}개, 하드코딩 ${hardcodedUsed}개, 추정 ${estimatedUsed}개`);
+      console.log(`💰 가격 수집 완료: 키움 ${kiwoomSuccess}개, 검증된 ${hardcodedUsed}개, 제외 ${stockCodes.length - kiwoomSuccess - hardcodedUsed}개`);
 
       return {
         prices: new Map(Array.from(results.entries()).map(([code, data]) => [code, data.price])),
@@ -139,25 +126,37 @@ class StockPriceService {
         summary: {
           total: stockCodes.length,
           kiwoom: kiwoomSuccess,
-          hardcoded: hardcodedUsed,
-          estimated: estimatedUsed
+          verified: hardcodedUsed,
+          excluded: stockCodes.length - kiwoomSuccess - hardcodedUsed
         }
       };
 
     } catch (error) {
       console.error('❌ 대량 가격 조회 실패:', error.message);
       
-      // 완전 실패시 하드코딩 + 추정가격으로 복구
+      // 완전 실패시 검증된 가격만으로 복구
       const fallbackResults = new Map();
+      let fallbackCount = 0;
+      
       stockCodes.forEach(code => {
-        const price = this.lastClosingPrices[code] || this.estimatePriceByIndustry(code);
-        fallbackResults.set(code, price);
+        const price = this.lastClosingPrices[code];
+        if (price) {
+          fallbackResults.set(code, price);
+          fallbackCount++;
+        }
+        // 가격 없는 종목은 결과에 포함하지 않음
       });
+      
+      console.log(`🔄 fallback 복구: ${fallbackCount}개 검증된 가격만 사용`);
       
       return {
         prices: fallbackResults,
         sources: new Map(),
-        summary: { total: stockCodes.length, fallback: stockCodes.length }
+        summary: { 
+          total: stockCodes.length, 
+          verified: fallbackCount,
+          excluded: stockCodes.length - fallbackCount
+        }
       };
     }
   }
