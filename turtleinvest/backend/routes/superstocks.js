@@ -24,7 +24,7 @@ router.post('/search', async (req, res) => {
     });
 
     // API 키 검증
-    const validApiKey = process.env.MAKE_API_KEY || 'turtle_make_api_2024';
+    const validApiKey = process.env.MAKE_API_KEY || 'TtL_9K2m8X7nQ4pE6wR3vY5uI8oP1aSdF7gH9jK2mN5vB8xC3zE6rT9yU4iO7pL0';
     if (!apiKey || apiKey !== validApiKey) {
       return res.status(401).json({
         success: false,
@@ -300,7 +300,7 @@ router.post('/kiwoom-search', async (req, res) => {
     });
 
     // API 키 검증
-    const validApiKey = process.env.MAKE_API_KEY || 'turtle_make_api_2024';
+    const validApiKey = process.env.MAKE_API_KEY || 'TtL_9K2m8X7nQ4pE6wR3vY5uI8oP1aSdF7gH9jK2mN5vB8xC3zE6rT9yU4iO7pL0';
     if (!apiKey || apiKey !== validApiKey) {
       return res.status(401).json({
         success: false,
@@ -429,7 +429,7 @@ router.post('/hybrid-search', async (req, res) => {
     const { apiKey, conditions = {}, targetStocks } = req.body;
 
     // API 키 검증
-    const validApiKey = process.env.MAKE_API_KEY || 'turtle_make_api_2024';
+    const validApiKey = process.env.MAKE_API_KEY || 'TtL_9K2m8X7nQ4pE6wR3vY5uI8oP1aSdF7gH9jK2mN5vB8xC3zE6rT9yU4iO7pL0';
     if (!apiKey || apiKey !== validApiKey) {
       return res.status(401).json({
         success: false,
@@ -562,7 +562,7 @@ router.post('/quick-search', async (req, res) => {
     const { apiKey, conditions = {} } = req.body;
 
     // API 키 검증
-    const validApiKey = process.env.MAKE_API_KEY || 'turtle_make_api_2024';
+    const validApiKey = process.env.MAKE_API_KEY || 'TtL_9K2m8X7nQ4pE6wR3vY5uI8oP1aSdF7gH9jK2mN5vB8xC3zE6rT9yU4iO7pL0';
     if (!apiKey || apiKey !== validApiKey) {
       return res.status(401).json({
         success: false,
@@ -634,6 +634,56 @@ router.post('/quick-search', async (req, res) => {
       success: false,
       error: 'QUICK_SEARCH_FAILED',
       message: error.message
+    });
+  }
+});
+
+// 일일 종목 정보 업데이트 API (Make.com 스케줄러용)
+router.post('/daily-update', async (req, res) => {
+  try {
+    const { apiKey, mode = 'major' } = req.body;
+
+    // API 키 검증
+    const validApiKey = process.env.MAKE_API_KEY || 'TtL_9K2m8X7nQ4pE6wR3vY5uI8oP1aSdF7gH9jK2mN5vB8xC3zE6rT9yU4iO7pL0';
+    if (!apiKey || apiKey !== validApiKey) {
+      return res.status(401).json({
+        success: false,
+        error: 'UNAUTHORIZED',
+        message: 'Invalid API key'
+      });
+    }
+
+    console.log(`🕐 일일 종목 업데이트 시작 (모드: ${mode})...`);
+    
+    const DailyStockUpdater = require('../daily_stock_update');
+    const updater = new DailyStockUpdater();
+
+    let result;
+    if (mode === 'all') {
+      result = await updater.updateAllStocks();
+    } else {
+      result = await updater.updateMajorStocksOnly();
+    }
+
+    console.log(`✅ 일일 업데이트 완료: 성공 ${result.success}개`);
+
+    res.json({
+      success: true,
+      timestamp: new Date().toISOString(),
+      updateMode: mode,
+      results: result,
+      message: mode === 'all' ? '전체 종목 업데이트 완료' : '주요 종목 업데이트 완료',
+      nextUpdate: '내일 오후 5시',
+      recommendation: 'Make.com 스케줄러로 매일 오후 5시 실행 권장'
+    });
+
+  } catch (error) {
+    console.error('❌ 일일 업데이트 API 실패:', error);
+    res.status(500).json({
+      success: false,
+      error: 'DAILY_UPDATE_FAILED',
+      message: error.message,
+      timestamp: new Date().toISOString()
     });
   }
 });

@@ -200,7 +200,7 @@ router.post('/superstocks-search', async (req, res) => {
     });
     
     // API 키 검증
-    const validApiKey = process.env.MAKE_API_KEY || 'turtle_make_api_2024';
+    const validApiKey = process.env.MAKE_API_KEY || 'TtL_9K2m8X7nQ4pE6wR3vY5uI8oP1aSdF7gH9jK2mN5vB8xC3zE6rT9yU4iO7pL0';
     if (!apiKey || apiKey !== validApiKey) {
       return res.status(401).json({
         success: false,
@@ -401,7 +401,7 @@ router.post('/make-analysis', async (req, res) => {
     const { apiKey, symbols, investmentBudget } = req.body;
     
     // API 키 검증
-    const validApiKey = process.env.MAKE_API_KEY || 'turtle_make_api_2024';
+    const validApiKey = process.env.MAKE_API_KEY || 'TtL_9K2m8X7nQ4pE6wR3vY5uI8oP1aSdF7gH9jK2mN5vB8xC3zE6rT9yU4iO7pL0';
     if (!apiKey || apiKey !== validApiKey) {
       return res.status(401).json({
         success: false,
@@ -979,7 +979,7 @@ router.post('/sell-analysis', async (req, res) => {
     const { apiKey } = req.body;
     
     // API 키 검증
-    const validApiKey = process.env.MAKE_API_KEY || 'turtle_make_api_2024';
+    const validApiKey = process.env.MAKE_API_KEY || 'TtL_9K2m8X7nQ4pE6wR3vY5uI8oP1aSdF7gH9jK2mN5vB8xC3zE6rT9yU4iO7pL0';
     if (!apiKey || apiKey !== validApiKey) {
       return res.status(401).json({
         success: false,

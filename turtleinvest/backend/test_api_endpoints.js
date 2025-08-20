@@ -7,7 +7,7 @@ const axios = require('axios');
 
 // 테스트 설정
 const BASE_URL = 'http://localhost:3001/api/signals';
-const API_KEY = 'turtle_make_api_2024';
+const API_KEY = 'TtL_9K2m8X7nQ4pE6wR3vY5uI8oP1aSdF7gH9jK2mN5vB8xC3zE6rT9yU4iO7pL0';
 
 async function testHealthCheck() {
   console.log('\n🔍 헬스체크 테스트...');
