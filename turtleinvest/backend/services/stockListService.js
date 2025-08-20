@@ -115,9 +115,35 @@ class StockListService {
       '051900': 'LG생활건강', '097950': 'CJ제일제당', '086790': '하나금융지주',
       '316140': '우리금융지주', '024110': '기업은행', '030200': 'KT',
       '009540': 'HD한국조선해양', '011200': 'HMM', '139480': '이마트',
-      '021240': '코웨이', '161390': '한국타이어앤테크놀로지'
+      '021240': '코웨이', '161390': '한국타이어앤테크놀로지',
+      
+      // 자주 나오는 기타 종목들
+      '200670': '휴메딕스', '298690': '에이스토리', '183190': '아이에스동서',
+      '215200': '메가스터디교육', '252990': '샘씨엔에스', '215100': '액션스퀘어',
+      '300080': '플리토', '290650': '엘앤씨바이오', '263750': '펄어비스',
+      '215000': '골프존', '238090': '앤디포스', '900240': '코웨이홀딩스'
     };
-    return names[symbol] || `종목${symbol}`;
+    // 매핑되지 않은 종목은 업종 추정 + 코드로 표시
+    if (names[symbol]) {
+      return names[symbol];
+    }
+    
+    // 종목코드 패턴으로 업종 추정
+    const firstDigit = symbol.charAt(0);
+    let industryPrefix = '';
+    
+    if (firstDigit === '0' || firstDigit === '1') {
+      industryPrefix = 'KS'; // 코스피
+    } else if (firstDigit === '2') {
+      industryPrefix = 'KQ'; // 코스닥
+    } else if (firstDigit === '3') {
+      industryPrefix = 'IT'; // 코스닥 IT
+    } else {
+      industryPrefix = 'ST'; // 기타
+    }
+    
+    return `${industryPrefix}_${symbol}`;
+  }
   }
   
   // 통계 정보
