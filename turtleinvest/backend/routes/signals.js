@@ -459,8 +459,9 @@ router.post('/make-analysis', async (req, res) => {
           const revenueInWon = stock.revenue * 100000000;
           const psr = revenueInWon > 0 ? marketCap / revenueInWon : 999;
 
-          // 실제 회사명 사용 (SuperstocksAnalyzer에서 가져오기)
-          const realStockName = SuperstocksAnalyzer.getStockName(stock.stockCode);
+          // 캐시된 실제 회사명 사용
+          const StockNameCacheService = require('../services/stockNameCacheService');
+          const realStockName = await StockNameCacheService.getStockName(stock.stockCode);
 
           // PSR 조건 확인 (현실적 기준 2.5)
           if (psr <= 2.5) {

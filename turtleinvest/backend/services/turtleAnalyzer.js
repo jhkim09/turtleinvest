@@ -391,10 +391,31 @@ class TurtleAnalyzer {
     }
   }
   
-  // 관심종목 리스트 (터틀 트레이딩) - 통합 종목 풀 사용
+  // 관심종목 리스트 (터틀 트레이딩) - 캐시된 회사명 사용
   static async getWatchlist() {
-    const StockListService = require('./stockListService');
-    return StockListService.getTurtleWatchlist();
+    try {
+      const StockListService = require('./stockListService');
+      const StockNameCacheService = require('./stockNameCacheService');
+      
+      const stockCodes = StockListService.getUnifiedStockList();
+      
+      // 캐시에서 회사명 대량 조회
+      const nameMap = await StockNameCacheService.getBulkStockNames(stockCodes);
+      
+      const watchlist = stockCodes.map(symbol => ({
+        symbol: symbol,
+        name: nameMap.get(symbol) || `ST_${symbol}` // 캐시된 이름 또는 fallback
+      }));
+      
+      console.log(`📋 터틀 watchlist 준비: ${watchlist.length}개 종목 (캐시된 회사명 ${nameMap.size}개)`);
+      
+      return watchlist;
+    } catch (error) {
+      console.error('watchlist 조회 실패:', error.message);
+      // fallback으로 기존 방식 사용
+      const StockListService = require('./stockListService');
+      return StockListService.getTurtleWatchlist();
+    }
   }
   
   // 기존 하드코딩된 종목 리스트 (백업용)
