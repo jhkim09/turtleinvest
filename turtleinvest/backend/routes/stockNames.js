@@ -7,26 +7,65 @@ const express = require('express');
 const router = express.Router();
 const StockNameCacheService = require('../services/stockNameCacheService');
 
-// 전체 상장사 데이터 업데이트 (DART API 사용)
+// 전체 상장사 데이터 업데이트 (DART API 사용) - 백그라운드 처리
 router.post('/update-all', async (req, res) => {
   try {
-    console.log('🚀 전체 상장사 데이터 업데이트 API 호출...');
+    console.log('🚀 전체 상장사 데이터 업데이트 API 호출 (백그라운드)...');
     
-    const result = await StockNameCacheService.updateAllListedCompanies();
-    
+    // 즉시 응답 (타임아웃 방지)
     res.json({
       success: true,
-      message: '전체 상장사 데이터 업데이트 완료',
-      data: result,
+      message: '전체 상장사 데이터 업데이트 시작됨 (백그라운드 처리)',
+      note: 'GET /api/stock-names/status로 진행률 확인 가능',
       timestamp: new Date().toISOString()
     });
+
+    // 백그라운드에서 실행
+    setTimeout(async () => {
+      try {
+        const result = await StockNameCacheService.updateAllListedCompanies();
+        console.log('✅ 백그라운드 업데이트 완료:', result);
+      } catch (error) {
+        console.error('❌ 백그라운드 업데이트 실패:', error.message);
+      }
+    }, 100);
 
   } catch (error) {
     console.error('❌ 전체 상장사 데이터 업데이트 API 실패:', error);
     
     res.status(500).json({
       success: false,
-      message: '전체 상장사 데이터 업데이트 실패',
+      message: '전체 상장사 데이터 업데이트 시작 실패',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// 배치 업데이트 (작은 단위로 처리)
+router.post('/update-batch', async (req, res) => {
+  try {
+    const { batchSize = 200, startIndex = 0 } = req.body;
+    
+    console.log(`🚀 배치 업데이트 시작: ${startIndex}번째부터 ${batchSize}개 처리...`);
+    
+    const result = await StockNameCacheService.updateBatchListedCompanies(batchSize, startIndex);
+    
+    res.json({
+      success: true,
+      message: `배치 업데이트 완료`,
+      data: result,
+      nextStartIndex: startIndex + batchSize,
+      hasMore: result.hasMore || false,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ 배치 업데이트 실패:', error);
+    
+    res.status(500).json({
+      success: false,
+      message: '배치 업데이트 실패',
       error: error.message,
       timestamp: new Date().toISOString()
     });

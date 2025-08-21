@@ -226,6 +226,99 @@ class StockNameCacheService {
     }
   }
 
+  // 배치 단위로 상장사 데이터 업데이트 (타임아웃 방지)
+  async updateBatchListedCompanies(batchSize = 200, startIndex = 0) {
+    try {
+      console.log(`🚀 배치 업데이트: ${startIndex}번째부터 ${batchSize}개 처리...`);
+      
+      const DartService = require('./dartService');
+      const allCorpCodes = await DartService.loadAllCorpCodes();
+      
+      if (!allCorpCodes || allCorpCodes.size === 0) {
+        throw new Error('DART에서 기업 데이터를 가져올 수 없습니다');
+      }
+      
+      // Map을 배열로 변환
+      const corpArray = Array.from(allCorpCodes.entries());
+      const totalCount = corpArray.length;
+      
+      // 배치 범위 계산
+      const endIndex = Math.min(startIndex + batchSize, totalCount);
+      const batchData = corpArray.slice(startIndex, endIndex);
+      
+      console.log(`📊 배치 처리: ${startIndex}-${endIndex}/${totalCount} (${batchData.length}개)`);
+      
+      let saved = 0;
+      let updated = 0;
+      let skipped = 0;
+      
+      for (const [stockCode, corpInfo] of batchData) {
+        try {
+          // 유효한 6자리 종목코드만 처리
+          if (!stockCode || !/^\d{6}$/.test(stockCode)) {
+            skipped++;
+            continue;
+          }
+          
+          const companyName = corpInfo.corpName || corpInfo.corp_name || corpInfo.name || '회사명없음';
+          
+          // DB에서 기존 데이터 확인
+          const existing = await StockName.findOne({ stockCode });
+          
+          if (existing) {
+            await StockName.updateOne(
+              { stockCode },
+              { 
+                $set: { 
+                  companyName: companyName,
+                  market: this.determineMarket(stockCode),
+                  corpCode: corpInfo.corpCode || corpInfo.corp_code,
+                  lastUpdated: new Date(),
+                  dataSource: 'DART_API'
+                }
+              }
+            );
+            updated++;
+          } else {
+            await StockName.saveStockName(stockCode, companyName, {
+              market: this.determineMarket(stockCode),
+              corpCode: corpInfo.corpCode || corpInfo.corp_code,
+              dataSource: 'DART_API'
+            });
+            saved++;
+          }
+          
+          // 메모리 캐시에도 저장
+          this.memoryCache.set(stockCode, companyName);
+          
+        } catch (error) {
+          console.error(`❌ ${stockCode} 배치 처리 실패:`, error.message);
+          skipped++;
+        }
+      }
+      
+      const hasMore = endIndex < totalCount;
+      const progress = Math.round((endIndex / totalCount) * 100);
+      
+      console.log(`✅ 배치 업데이트 완료: 신규 ${saved}개, 업데이트 ${updated}개, 건너뜀 ${skipped}개 (진행률: ${progress}%)`);
+      
+      return { 
+        saved, 
+        updated, 
+        skipped, 
+        processed: batchData.length,
+        progress: progress,
+        hasMore: hasMore,
+        nextStartIndex: endIndex,
+        totalCount: totalCount
+      };
+      
+    } catch (error) {
+      console.error('❌ 배치 업데이트 실패:', error.message);
+      throw error;
+    }
+  }
+
   // 종목코드로 시장 구분 (코스피/코스닥)
   determineMarket(stockCode) {
     const firstDigit = stockCode.charAt(0);
