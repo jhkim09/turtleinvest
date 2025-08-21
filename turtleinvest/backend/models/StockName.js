@@ -5,8 +5,7 @@ const stockNameSchema = new mongoose.Schema({
   stockCode: {
     type: String,
     required: true,
-    unique: true,
-    index: true
+    unique: true
   },
   
   // 회사명 정보
