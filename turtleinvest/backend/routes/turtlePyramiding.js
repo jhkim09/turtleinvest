@@ -9,24 +9,39 @@ const TurtleNotification = require('../services/turtleNotification');
 
 /**
  * 일일 터틀 피라미딩 분석 - Make.com에서 호출
- * GET /api/turtle-pyramiding/analyze
+ * GET /api/turtle-pyramiding/analyze (기존 호환성)
+ * POST /api/turtle-pyramiding/analyze (계좌잔고 포함)
  */
 router.get('/analyze', async (req, res) => {
+  return handleAnalyze(req, res, null);
+});
+
+router.post('/analyze', async (req, res) => {
+  const { accountBalance, totalEquity } = req.body;
+  return handleAnalyze(req, res, { accountBalance, totalEquity });
+});
+
+async function handleAnalyze(req, res, customBalance) {
   try {
     console.log('🔔 Make.com에서 터틀 피라미딩 분석 요청...');
+    if (customBalance?.accountBalance) {
+      console.log(`💰 계좌잔고 입력: ${(customBalance.accountBalance/10000).toFixed(0)}만원`);
+    }
     
     const turtleNotification = new TurtleNotification();
-    const results = await turtleNotification.analyzeDailySignals();
+    const results = await turtleNotification.analyzeDailySignals(customBalance);
     
     // Make.com이 이해할 수 있는 형태로 응답
     const response = {
       success: true,
       timestamp: results.timestamp,
+      accountInfo: results.accountInfo, // 계좌 정보 추가
       summary: {
         newEntrySignals: results.newEntrySignals.length,
         addPositionSignals: results.addPositionSignals.length,
         stopLossSignals: results.stopLossSignals.length,
-        portfolioPositions: results.portfolioStatus?.turtlePositions?.length || 0
+        portfolioPositions: results.portfolioStatus?.turtlePositions?.length || 0,
+        accountBalance: results.accountInfo?.balance ? `${(results.accountInfo.balance/10000).toFixed(0)}만원` : 'N/A'
       },
       
       // 각 신호별 상세 정보 (Make.com에서 활용 가능)
@@ -82,7 +97,7 @@ router.get('/analyze', async (req, res) => {
       timestamp: new Date().toISOString()
     });
   }
-});
+}
 
 /**
  * 포트폴리오 상태 조회 - 간단한 현황 확인용

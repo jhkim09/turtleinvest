@@ -21,8 +21,11 @@ class TurtleNotification {
   
   /**
    * 일일 터틀 신호 종합 분석 및 알림
+   * @param {Object} customBalance - 선택적 계좌잔고 정보
+   * @param {number} customBalance.accountBalance - 총 계좌잔고
+   * @param {number} customBalance.totalEquity - 총 자산
    */
-  async analyzeDailySignals() {
+  async analyzeDailySignals(customBalance = null) {
     try {
       console.log('🔔 일일 터틀 신호 분석 시작...');
       
@@ -32,10 +35,49 @@ class TurtleNotification {
         addPositionSignals: [],
         stopLossSignals: [],
         portfolioStatus: null,
-        notifications: []
+        notifications: [],
+        accountInfo: null
       };
       
-      // 1. 기존 터틀 분석기에서 신규 진입 신호 조회
+      // 0. 계좌잔고 설정 (입력값 우선, 없으면 키움에서 조회)
+      let accountBalance = null;
+      if (customBalance?.accountBalance) {
+        accountBalance = customBalance.accountBalance;
+        console.log(`💰 입력된 계좌잔고: ${(accountBalance/10000).toFixed(0)}만원`);
+        results.accountInfo = {
+          source: 'INPUT',
+          balance: accountBalance,
+          totalEquity: customBalance.totalEquity || accountBalance
+        };
+      } else {
+        try {
+          const KiwoomService = require('./kiwoomService');
+          const kiwoomAccount = await KiwoomService.getAccountBalance();
+          if (kiwoomAccount?.totalAsset) {
+            accountBalance = kiwoomAccount.totalAsset;
+            console.log(`💰 키움에서 조회한 계좌잔고: ${(accountBalance/10000).toFixed(0)}만원`);
+            results.accountInfo = {
+              source: 'KIWOOM',
+              balance: accountBalance,
+              totalEquity: kiwoomAccount.totalAsset,
+              cash: kiwoomAccount.cash
+            };
+          }
+        } catch (error) {
+          console.warn('키움 계좌 조회 실패, 기본값 사용:', error.message);
+          accountBalance = 10000000; // 기본값: 1000만원
+          results.accountInfo = {
+            source: 'DEFAULT',
+            balance: accountBalance,
+            note: '키움 연결 실패'
+          };
+        }
+      }
+      
+      // 전역 투자 예산 설정 (터틀 분석기에서 사용)
+      global.investmentBudget = accountBalance;
+      
+      // 1. 기존 터틀 분석기에서 신규 진입 신호 조회 (계좌잔고 반영됨)
       const TurtleAnalyzer = require('./turtleAnalyzer');
       results.newEntrySignals = await TurtleAnalyzer.analyzeMarket();
       
