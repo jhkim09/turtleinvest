@@ -110,33 +110,75 @@ class DartService {
       
       console.log(`🔍 XML에서 총 ${stockMatches.length}개 상장기업 발견`);
       
-      // 모든 종목 데이터를 Map에 저장 (실제 상장기업 우선 선택)
+      // 상장사만 선별해서 Map에 저장 (강화된 필터링)
+      let filteredCount = 0;
+      let skippedCount = 0;
+      
       for (const stock of stockMatches) {
-        // 이미 해당 종목코드가 있는 경우, 더 적합한 회사명인지 확인
+        // 1. 비상장사 키워드 필터링 (강화)
+        const excludeKeywords = [
+          '유동화전문', '부동산투자회사', '위탁관리', '사모투자', '새마을금고',
+          '제', '차', '호', '리츠', 'REIT', '스팩', 'SPAC', '우선주', '신주인수권',
+          '투자회사', '자산관리', '펀드', '투자조합', '투자신탁', '증권투자',
+          '엔라이튼', '유한회사', '유한책임회사', 'LLC', '합자회사', '합명회사',
+          '청산', '해산', '폐지', '정리', '매각', '인수', '합병대상'
+        ];
+        
+        const shouldSkip = excludeKeywords.some(keyword => stock.corpName.includes(keyword));
+        
+        if (shouldSkip) {
+          skippedCount++;
+          continue;
+        }
+        
+        // 2. 종목코드 패턴 검증 (6자리 숫자)
+        if (!/^\d{6}$/.test(stock.stockCode)) {
+          skippedCount++;
+          continue;
+        }
+        
+        // 3. 상장시장 추정으로 유효성 검증
+        const marketCode = stock.stockCode.charAt(0);
+        const isValidMarket = ['0', '1', '2', '3'].includes(marketCode); // 코스피/코스닥
+        
+        if (!isValidMarket) {
+          skippedCount++;
+          continue;
+        }
+        
+        // 4. 중복 처리: 더 적합한 회사명 선택
         if (corpCodeMap.has(stock.stockCode)) {
           const existing = corpCodeMap.get(stock.stockCode);
           
-          // 부동산투자회사, 유동화전문회사 등은 제외하고 실제 기업 우선
-          const skipKeywords = ['유동화전문', '부동산투자회사', '위탁관리', '사모투자', '새마을금고', '제', '차', '호', '리츠', 'REIT', '스팩', 'SPAC', '우선주', '신주인수권'];
-          const isExistingBetter = !skipKeywords.some(keyword => existing.corpName.includes(keyword));
-          const isCurrentWorse = skipKeywords.some(keyword => stock.corpName.includes(keyword));
+          // 기존 데이터가 더 적합한지 확인
+          const isExistingBetter = !excludeKeywords.some(keyword => existing.corpName.includes(keyword));
+          const isCurrentWorse = excludeKeywords.some(keyword => stock.corpName.includes(keyword));
           
-          // 추가 조건: 더 짧고 명확한 회사명 우선 (일반적으로 모회사)
-          const isCurrentShorter = stock.corpName.length < existing.corpName.length;
+          // 더 짧고 명확한 회사명 우선 (일반적으로 모회사)
+          const isCurrentBetter = stock.corpName.length < existing.corpName.length && !isCurrentWorse;
           
           if (isExistingBetter && isCurrentWorse) {
-            // 기존이 더 좋으므로 건너뛰기
-            continue;
+            skippedCount++;
+            continue; // 기존 데이터 유지
+          }
+          
+          if (!isCurrentBetter && isExistingBetter) {
+            skippedCount++;
+            continue; // 기존 데이터 유지
           }
         }
         
+        // 5. 상장사로 판단되면 저장
         corpCodeMap.set(stock.stockCode, {
           corpCode: stock.corpCode,
-          corpName: stock.corpName
+          corpName: stock.corpName,
+          market: this.guessMarketFromCode(stock.stockCode),
+          isFiltered: true
         });
+        filteredCount++;
       }
       
-      console.log(`✅ 총 ${stockMatches.length}개 기업코드 로딩 완료`);
+      console.log(`✅ 상장사 필터링 완료: ${filteredCount}개 선별, ${skippedCount}개 제외 (총 ${stockMatches.length}개 검토)`);
       
       // 처음 5개 샘플 출력
       const samples = stockMatches.slice(0, 5);
@@ -918,6 +960,14 @@ class DartService {
     }
   }
   
+  // 종목코드로 시장 추정
+  guessMarketFromCode(stockCode) {
+    const firstDigit = stockCode.charAt(0);
+    if (['0', '1'].includes(firstDigit)) return 'KOSPI';
+    if (['2', '3'].includes(firstDigit)) return 'KOSDAQ'; 
+    return 'UNKNOWN';
+  }
+
   // Rate limit을 위한 지연 함수
   delay(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
