@@ -55,7 +55,9 @@ class YahooFinanceService {
           low: Math.round(quotes.low?.[index] || 0),
           close: Math.round(quotes.close?.[index] || 0),
           volume: quotes.volume?.[index] || 0
-        })).filter(item => item.close > 0); // 유효한 데이터만
+        }))
+        .filter(item => item.close > 0) // 유효한 데이터만
+        .sort((a, b) => new Date(b.date) - new Date(a.date)); // 최신순 정렬 (최신이 [0])
         
         // 캐시 저장
         this.cache.set(cacheKey, {
