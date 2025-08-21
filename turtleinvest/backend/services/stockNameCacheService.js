@@ -96,19 +96,145 @@ class StockNameCacheService {
 
   // Fallback 종목명 생성 (개선된 버전)
   generateFallbackName(stockCode) {
-    const firstDigit = stockCode.charAt(0);
+    // 하드코딩된 주요 종목명 (DB 연결 실패시 대비)
+    const hardcodedNames = {
+      '005930': '삼성전자',
+      '000660': 'SK하이닉스', 
+      '035420': 'NAVER',
+      '005380': '현대차',
+      '012330': '현대모비스',
+      '000270': '기아',
+      '051910': 'LG화학',
+      '068270': '셀트리온',
+      '251270': '넷마블',
+      '036570': '엔씨소프트',
+      '352820': '하이브',
+      '326030': 'SK바이오팜',
+      '259960': '크래프톤',
+      '328130': '루닛',
+      '237690': '에스티팜',
+      '240810': '원익IPS',
+      '200670': '휴메딕스',
+      '290650': '엘앤씨바이오',
+      '032500': '케이엠더블유',
+      '141080': '레고켐바이오',
+      '042700': '한미반도체',
+      '145020': '휴젤'
+    };
     
-    // 시장별 접두사
+    // 하드코딩된 종목명이 있으면 사용
+    if (hardcodedNames[stockCode]) {
+      return hardcodedNames[stockCode];
+    }
+    
+    // 기존 시장별 접두사 방식 (더 간결하게)
+    const firstDigit = stockCode.charAt(0);
     if (firstDigit === '0' || firstDigit === '1') {
-      return `KS_${stockCode}`; // 코스피
+      return `코스피${stockCode}`; // 코스피
     } else if (firstDigit === '2') {
-      return `KQ_${stockCode}`; // 코스닥
+      return `코스닥${stockCode}`; // 코스닥
     } else if (firstDigit === '3') {
-      return `IT_${stockCode}`; // IT/게임
-    } else if (firstDigit === '9') {
-      return `SP_${stockCode}`; // 특수/우선주
+      return `종목${stockCode}`; // IT/게임 등
     } else {
-      return `ST_${stockCode}`; // 기타
+      return `종목${stockCode}`; // 기타
+    }
+  }
+
+  // DART에서 전체 상장사 데이터 가져와서 업데이트
+  async updateAllListedCompanies() {
+    try {
+      console.log('🚀 DART API에서 전체 상장사 데이터 수집 시작...');
+      
+      const DartService = require('./dartService');
+      const allCorpCodes = await DartService.loadAllCorpCodes();
+      
+      if (!allCorpCodes || allCorpCodes.size === 0) {
+        throw new Error('DART에서 기업 데이터를 가져올 수 없습니다');
+      }
+      
+      console.log(`📊 DART에서 ${allCorpCodes.size}개 기업 데이터 수집 완료`);
+      
+      let saved = 0;
+      let updated = 0;
+      let skipped = 0;
+      
+      // Map을 배열로 변환하여 처리
+      const corpArray = Array.from(allCorpCodes.entries());
+      
+      for (const [stockCode, corpInfo] of corpArray) {
+        try {
+          // 유효한 6자리 종목코드만 처리
+          if (!stockCode || !/^\d{6}$/.test(stockCode)) {
+            skipped++;
+            continue;
+          }
+          
+          const companyName = corpInfo.corp_name || corpInfo.name || '회사명없음';
+          
+          // DB에서 기존 데이터 확인
+          const existing = await StockName.findOne({ stockCode });
+          
+          if (existing) {
+            // 기존 데이터 업데이트
+            await StockName.updateOne(
+              { stockCode },
+              { 
+                $set: { 
+                  companyName: companyName,
+                  market: this.determineMarket(stockCode),
+                  corpCode: corpInfo.corp_code,
+                  lastUpdated: new Date(),
+                  dataSource: 'DART_API'
+                }
+              }
+            );
+            updated++;
+          } else {
+            // 신규 데이터 저장
+            await StockName.saveStockName(stockCode, companyName, {
+              market: this.determineMarket(stockCode),
+              corpCode: corpInfo.corp_code,
+              dataSource: 'DART_API'
+            });
+            saved++;
+          }
+          
+          // 메모리 캐시에도 저장
+          this.memoryCache.set(stockCode, companyName);
+          
+          // 진행률 표시 (100개마다)
+          if ((saved + updated) % 100 === 0) {
+            console.log(`📈 진행률: ${saved + updated}/${corpArray.length} 처리 중...`);
+          }
+          
+        } catch (error) {
+          console.error(`❌ ${stockCode} 처리 실패:`, error.message);
+          skipped++;
+        }
+      }
+      
+      console.log(`✅ 전체 상장사 데이터 업데이트 완료:`);
+      console.log(`   신규: ${saved}개`);
+      console.log(`   업데이트: ${updated}개`);
+      console.log(`   건너뜀: ${skipped}개`);
+      
+      return { saved, updated, skipped, total: corpArray.length };
+      
+    } catch (error) {
+      console.error('❌ 전체 상장사 데이터 업데이트 실패:', error.message);
+      throw error;
+    }
+  }
+
+  // 종목코드로 시장 구분 (코스피/코스닥)
+  determineMarket(stockCode) {
+    const firstDigit = stockCode.charAt(0);
+    if (firstDigit === '0' || firstDigit === '1') {
+      return 'KOSPI';
+    } else if (firstDigit === '2' || firstDigit === '3') {
+      return 'KOSDAQ';
+    } else {
+      return 'ETC';
     }
   }
 
