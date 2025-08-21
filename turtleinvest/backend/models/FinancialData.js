@@ -4,8 +4,7 @@ const financialDataSchema = new mongoose.Schema({
   // 기본 정보
   stockCode: {
     type: String,
-    required: true,
-    index: true
+    required: true
   },
   corpCode: {
     type: String,
@@ -19,8 +18,7 @@ const financialDataSchema = new mongoose.Schema({
   // 연도별 재무 데이터
   year: {
     type: Number,
-    required: true,
-    index: true
+    required: true
   },
   
   // 재무 지표 (단위: 억원)
@@ -71,8 +69,7 @@ const financialDataSchema = new mongoose.Schema({
   },
   dataYear: {
     type: Number, // 데이터가 수집된 년도 (2024년에 2023년 데이터 수집)
-    required: true,
-    index: true
+    required: true
   },
   
   // 추가 메타데이터
