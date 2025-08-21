@@ -169,7 +169,7 @@ class StockNameCacheService {
             continue;
           }
           
-          const companyName = corpInfo.corp_name || corpInfo.name || '회사명없음';
+          const companyName = corpInfo.corpName || corpInfo.corp_name || corpInfo.name || '회사명없음';
           
           // DB에서 기존 데이터 확인
           const existing = await StockName.findOne({ stockCode });
@@ -182,7 +182,7 @@ class StockNameCacheService {
                 $set: { 
                   companyName: companyName,
                   market: this.determineMarket(stockCode),
-                  corpCode: corpInfo.corp_code,
+                  corpCode: corpInfo.corpCode || corpInfo.corp_code,
                   lastUpdated: new Date(),
                   dataSource: 'DART_API'
                 }
@@ -193,7 +193,7 @@ class StockNameCacheService {
             // 신규 데이터 저장
             await StockName.saveStockName(stockCode, companyName, {
               market: this.determineMarket(stockCode),
-              corpCode: corpInfo.corp_code,
+              corpCode: corpInfo.corpCode || corpInfo.corp_code,
               dataSource: 'DART_API'
             });
             saved++;
