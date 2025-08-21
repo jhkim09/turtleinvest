@@ -167,15 +167,44 @@ class TurtleAnalyzer {
       const current = priceData[i];
       const previous = priceData[i - 1];
       
+      // 데이터 검증
+      if (!current || !previous || 
+          typeof current.high !== 'number' || typeof current.low !== 'number' ||
+          typeof previous.close !== 'number') {
+        continue;
+      }
+      
       const tr1 = current.high - current.low;
       const tr2 = Math.abs(current.high - previous.close);
       const tr3 = Math.abs(current.low - previous.close);
       
-      trueRanges.push(Math.max(tr1, tr2, tr3));
+      const trueRange = Math.max(tr1, tr2, tr3);
+      if (trueRange > 0 && !isNaN(trueRange)) {
+        trueRanges.push(trueRange);
+      }
     }
     
-    // 20일 평균
-    const avgTR = trueRanges.slice(0, period).reduce((sum, tr) => sum + tr, 0) / period;
+    // 최소 데이터 확인
+    if (trueRanges.length === 0) {
+      console.warn('ATR 계산: 유효한 데이터 없음');
+      return null; // 데이터 부족 표시
+    }
+    
+    // 20일 평균 (최소 5일 이상 데이터가 있어야 계산)
+    const useLength = Math.min(period, trueRanges.length);
+    if (useLength < 5) {
+      console.warn(`ATR 계산: 데이터 부족 (${useLength}일)`);
+      return null; // 데이터 부족 표시
+    }
+    
+    const avgTR = trueRanges.slice(0, useLength).reduce((sum, tr) => sum + tr, 0) / useLength;
+    
+    // 최종 검증
+    if (isNaN(avgTR) || avgTR <= 0) {
+      console.warn(`ATR 계산 결과 이상: ${avgTR}`);
+      return null; // 계산 불가 표시
+    }
+    
     return avgTR;
   }
   
@@ -299,50 +328,96 @@ class TurtleAnalyzer {
     
     if (action === 'BUY') {
       const currentPrice = signal.currentPrice;
-      const atr = indicators.atr;
+      let atr = indicators.atr;
       
-      // 터틀 트레이딩 핵심: 2% 리스크 + 2N 스톱로스
+      // ATR 값 검증 - 데이터 부족시 명시적 표시
+      if (!atr || atr === null || isNaN(atr) || atr <= 0) {
+        console.warn(`${signal.symbol}: 데이터 부족으로 투자금액 계산 불가 (ATR: ${atr})`);
+        return {
+          action: 'BUY',
+          dataStatus: 'INSUFFICIENT_DATA',
+          message: '데이터 부족',
+          investment: {
+            budget: totalInvestment,
+            actualAmount: '데이터 부족',
+            quantity: '데이터 부족',
+            pricePerShare: currentPrice
+          },
+          risk: {
+            maxRisk: totalInvestment * 0.02,
+            actualRisk: '데이터 부족',
+            riskPercent: 'N/A',
+            stopLossPrice: '데이터 부족',
+            stopLossDistance: '데이터 부족'
+          },
+          technical: {
+            atr: '데이터 부족',
+            nValue: '데이터 부족',
+            breakoutPrice: signal.breakoutPrice,
+            volumeRatio: indicators.volumeRatio ? indicators.volumeRatio.toFixed(2) : '1.00'
+          },
+          scenarios: {
+            loss2N: '데이터 부족',
+            breakeven: 0,
+            profit1N: '데이터 부족',
+            profit2N: '데이터 부족'
+          },
+          reasoning: `${signal.signalType} 신호 | 가격데이터 부족으로 투자금액 계산 불가`
+        };
+      }
+      
+      // 정상적인 계산 진행
       const maxRisk = totalInvestment * 0.02; // 최대 리스크: 2만원
       const stopLossDistance = atr * 2; // 2N (2 × ATR)
-      const stopLossPrice = Math.round(currentPrice - stopLossDistance);
+      
+      // 스톱로스 거리 최소값 보장 (현재가의 1% 이상)
+      const minStopLossDistance = currentPrice * 0.01;
+      const safeStopLossDistance = Math.max(stopLossDistance, minStopLossDistance);
+      
+      const stopLossPrice = Math.round(currentPrice - safeStopLossDistance);
       
       // 포지션 사이징: 리스크 ÷ 스톱로스 거리
-      const recommendedQuantity = Math.floor(maxRisk / stopLossDistance);
-      const actualInvestment = recommendedQuantity * currentPrice;
-      const actualRisk = recommendedQuantity * stopLossDistance;
+      const recommendedQuantity = Math.floor(maxRisk / safeStopLossDistance);
+      
+      // 최소 수량 보장 (1주 이상)
+      const safeQuantity = Math.max(1, recommendedQuantity);
+      
+      const actualInvestment = safeQuantity * currentPrice;
+      const actualRisk = safeQuantity * safeStopLossDistance;
       
       // 수익/손실 시나리오
-      const profit1N = recommendedQuantity * atr; // 1N 수익시
-      const profit2N = recommendedQuantity * (atr * 2); // 2N 수익시
+      const profit1N = safeQuantity * atr;
+      const profit2N = safeQuantity * (atr * 2);
       
       return {
         action: 'BUY',
+        dataStatus: 'SUFFICIENT_DATA',
         investment: {
-          budget: totalInvestment,           // 총 예산: 100만원
-          actualAmount: actualInvestment,    // 실제 투자금
-          quantity: recommendedQuantity,     // 매수 수량
-          pricePerShare: currentPrice        // 주당 가격
+          budget: totalInvestment,
+          actualAmount: Math.round(actualInvestment),
+          quantity: safeQuantity,
+          pricePerShare: currentPrice
         },
         risk: {
-          maxRisk: maxRisk,                  // 최대 리스크: 2만원
-          actualRisk: actualRisk,            // 실제 리스크
-          riskPercent: (actualRisk / actualInvestment * 100).toFixed(2), // 리스크 비율
-          stopLossPrice: stopLossPrice,      // 손절 가격
-          stopLossDistance: Math.round(stopLossDistance) // 손절 거리
+          maxRisk: maxRisk,
+          actualRisk: Math.round(actualRisk),
+          riskPercent: ((actualRisk / actualInvestment) * 100).toFixed(2),
+          stopLossPrice: stopLossPrice,
+          stopLossDistance: Math.round(safeStopLossDistance)
         },
         technical: {
-          atr: Math.round(atr),              // 평균 진실 범위
-          nValue: Math.round(atr),           // N값
-          breakoutPrice: signal.breakoutPrice, // 돌파 가격
-          volumeRatio: indicators.volumeRatio.toFixed(2) // 거래량 비율
+          atr: Math.round(atr),
+          nValue: Math.round(atr),
+          breakoutPrice: signal.breakoutPrice,
+          volumeRatio: indicators.volumeRatio ? indicators.volumeRatio.toFixed(2) : '1.00'
         },
         scenarios: {
-          loss2N: -actualRisk,               // 2N 손실 (스톱로스)
-          breakeven: 0,                      // 손익분기점
-          profit1N: profit1N,                // 1N 수익
-          profit2N: profit2N                 // 2N 수익
+          loss2N: -Math.round(actualRisk),
+          breakeven: 0,
+          profit1N: Math.round(profit1N),
+          profit2N: Math.round(profit2N)
         },
-        reasoning: `${signal.signalType} 신호 | 투자 ${(actualInvestment/10000).toFixed(0)}만원 | 수량 ${recommendedQuantity}주 | 손절 ${stopLossPrice.toLocaleString()}원 | 리스크 ${(actualRisk/10000).toFixed(1)}만원`
+        reasoning: `${signal.signalType} 신호 | 투자 ${(actualInvestment/10000).toFixed(0)}만원 | 수량 ${safeQuantity}주 | 손절 ${stopLossPrice.toLocaleString()}원 | 리스크 ${(actualRisk/10000).toFixed(1)}만원`
       };
     } else {
       return {
