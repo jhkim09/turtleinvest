@@ -149,6 +149,48 @@ router.get('/test/:stockCode', async (req, res) => {
   }
 });
 
+// KRX CSV 파일로 종목명 업데이트 (가장 정확한 방법)
+router.post('/update-from-krx', async (req, res) => {
+  try {
+    const { csvFilePath } = req.body;
+    
+    if (!csvFilePath) {
+      return res.status(400).json({
+        success: false,
+        message: 'CSV 파일 경로가 필요합니다',
+        usage: 'POST /api/stock-names/update-from-krx {"csvFilePath": "/path/to/krx.csv"}',
+        downloadUrl: 'https://data.krx.co.kr/contents/MDC/MDI/mdiLoader/index.cmd?menuId=MDC0201020501',
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    console.log('🚀 KRX CSV 파일로 종목명 업데이트 시작...');
+    
+    const KrxDataParser = require('../services/krxDataParser');
+    const result = await KrxDataParser.updateStockNamesFromKrx(csvFilePath);
+    
+    res.json({
+      success: true,
+      message: 'KRX CSV 데이터로 종목명 업데이트 완료',
+      data: result,
+      source: 'KRX 한국거래소 정식 데이터',
+      downloadUrl: 'https://data.krx.co.kr/contents/MDC/MDI/mdiLoader/index.cmd?menuId=MDC0201020501',
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ KRX CSV 업데이트 실패:', error);
+    
+    res.status(500).json({
+      success: false,
+      message: 'KRX CSV 업데이트 실패',
+      error: error.message,
+      downloadUrl: 'https://data.krx.co.kr/contents/MDC/MDI/mdiLoader/index.cmd?menuId=MDC0201020501',
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // 메모리 캐시 초기화
 router.post('/clear-cache', async (req, res) => {
   try {
