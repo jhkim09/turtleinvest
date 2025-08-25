@@ -436,6 +436,11 @@ class KiwoomService {
       
       if (!this.isConnected) {
         console.log('🔐 키움 API 미연결 상태, 인증 시도...');
+        console.log('🔑 환경변수 확인:', {
+          appKey: process.env.KIWOOM_APP_KEY ? '설정됨' : '미설정',
+          secretKey: process.env.KIWOOM_SECRET_KEY ? '설정됨' : '미설정'
+        });
+        
         const authenticated = await this.authenticate(
           process.env.KIWOOM_APP_KEY, 
           process.env.KIWOOM_SECRET_KEY
