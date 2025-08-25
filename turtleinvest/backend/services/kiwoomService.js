@@ -432,12 +432,23 @@ class KiwoomService {
   // 계좌 잔고 조회
   async getAccountBalance() {
     try {
+      console.log('🔍 계좌 잔고 조회 시작, 연결상태:', this.isConnected);
+      
       if (!this.isConnected) {
-        return {
-          cash: 50000000, // 5천만원 시뮬레이션
-          totalAsset: 50000000,
-          positions: []
-        };
+        console.log('🔐 키움 API 미연결 상태, 인증 시도...');
+        const authenticated = await this.authenticate(
+          process.env.KIWOOM_APP_KEY, 
+          process.env.KIWOOM_SECRET_KEY
+        );
+        
+        if (!authenticated) {
+          console.log('📊 인증 실패 - 시뮬레이션 데이터 반환');
+          return {
+            cash: 50000000, // 5천만원 시뮬레이션
+            totalAsset: 50000000,
+            positions: []
+          };
+        }
       }
       
       // 실제 키움 API 호출 - 계좌평가잔고내역 (kt00018)
