@@ -253,6 +253,14 @@ class KiwoomService {
     try {
       console.log('🔐 키움 API 인증 시작...');
       
+      // 서버 IP 확인
+      try {
+        const ipResponse = await axios.get('https://api.ipify.org?format=json');
+        console.log('🌍 현재 서버 IP:', ipResponse.data.ip);
+      } catch (ipError) {
+        console.log('⚠️ IP 조회 실패:', ipError.message);
+      }
+      
       const url = `${this.useMock ? this.mockURL : this.baseURL}/oauth2/token`;
       
       // JSON 형태로 데이터 준비
