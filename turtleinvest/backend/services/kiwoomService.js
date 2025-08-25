@@ -462,12 +462,12 @@ class KiwoomService {
             positions: [
               {
                 symbol: '122870',
-                name: 'YG PLUS',
-                quantity: 100,
-                avgPrice: 50000,
-                currentPrice: 50000,
+                name: '와이지엔터테인먼트',
+                quantity: 1,
+                avgPrice: 45000, // 실제 매수가로 추정
+                currentPrice: 45000,
                 unrealizedPL: 0,
-                totalValue: 5000000,
+                totalValue: 45000,
                 profitRate: 0,
                 entryDate: new Date().toISOString().split('T')[0],
                 entrySignal: 'TURTLE_BUY'
@@ -561,7 +561,8 @@ class KiwoomService {
       '000660': 185000,  // SK하이닉스  
       '035420': 195000,  // NAVER
       '005380': 238500,  // 현대차
-      '012330': 250000   // 현대모비스
+      '012330': 250000,  // 현대모비스
+      '122870': 45000    // 와이지엔터테인먼트
     };
     
     const basePrice = basePrices[symbol] || 100000;
