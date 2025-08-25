@@ -458,8 +458,10 @@ class KiwoomService {
         }
       });
       
+      console.log('📋 키움 API 전체 응답:', JSON.stringify(response.data, null, 2));
+      
       if (response.data && response.data.return_code === 0) {
-        console.log('📋 키움 계좌 응답:', JSON.stringify(response.data, null, 2));
+        console.log('✅ 키움 API 성공 응답 수신');
         
         const data = response.data;
         

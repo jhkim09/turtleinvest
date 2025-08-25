@@ -65,7 +65,7 @@ class TurtleNotification {
           }
         } catch (error) {
           console.warn('키움 계좌 조회 실패, 기본값 사용:', error.message);
-          accountBalance = 10000000; // 기본값: 1000만원
+          accountBalance = 1000000; // 기본값: 100만원
           results.accountInfo = {
             source: 'DEFAULT',
             balance: accountBalance,
@@ -231,18 +231,18 @@ class TurtleNotification {
   createNewEntryMessage(newEntrySignals) {
     let message = `🐢 ${newEntrySignals.length}개 종목 신규 진입 신호!\n\n`;
     
-    newEntrySignals.slice(0, 5).forEach(signal => { // 상위 5개만
-      const investment = (signal.recommendedAction?.investment?.actualAmount / 10000).toFixed(0);
+    newEntrySignals.forEach(signal => { // 전체 종목 표시
+      const investment = signal.recommendedAction?.investment?.actualAmount;
+      const investmentDisplay = investment && !isNaN(investment) && investment !== 'NaN' ? (investment / 10000).toFixed(0) : '데이터부족';
+      const stopLossPrice = signal.recommendedAction?.risk?.stopLossPrice;
+      const stopLossDisplay = stopLossPrice && !isNaN(stopLossPrice) && stopLossPrice !== 'N/A' && stopLossPrice !== '데이터 부족' ? stopLossPrice.toLocaleString() : '데이터부족';
+      
       message += `💰 ${signal.name}(${signal.symbol})\n`;
       message += `   현재가: ${signal.currentPrice.toLocaleString()}원\n`;
       message += `   돌파가: ${signal.breakoutPrice.toLocaleString()}원\n`;
-      message += `   추천투자: ${investment}만원\n`;
-      message += `   손절가: ${signal.recommendedAction?.risk?.stopLossPrice.toLocaleString() || 'N/A'}원\n\n`;
+      message += `   추천투자: ${investmentDisplay}만원\n`;
+      message += `   손절가: ${stopLossDisplay}원\n\n`;
     });
-    
-    if (newEntrySignals.length > 5) {
-      message += `... 외 ${newEntrySignals.length - 5}개 종목\n\n`;
-    }
     
     message += '💡 20일 고점 돌파 확인 후 진입하세요!';
     return message;
