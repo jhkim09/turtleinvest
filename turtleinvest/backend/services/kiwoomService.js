@@ -6,8 +6,8 @@ class KiwoomService {
     this.isConnected = false;
     this.accountNumber = '';
     this.accessToken = '';
-    this.baseURL = 'https://openapi.kiwoom.com'; // 실서버
-    this.mockURL = 'https://openapimock.kiwoom.com'; // 모의투자서버
+    this.baseURL = 'https://api.kiwoom.com'; // 실서버
+    this.mockURL = 'https://mockapi.kiwoom.com'; // 모의투자서버
     this.useMock = false; // 실서버 사용
   }
   
