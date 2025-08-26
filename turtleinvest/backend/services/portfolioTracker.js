@@ -9,6 +9,8 @@
  */
 
 const KiwoomService = require('./kiwoomService');
+const Trade = require('../models/Trade');
+const Signal = require('../models/Signal');
 
 class PortfolioTracker {
   
@@ -76,11 +78,58 @@ class PortfolioTracker {
   }
   
   /**
+   * 터틀 매수 이력 확인
+   */
+  async checkTurtleBuyHistory(symbol) {
+    try {
+      // Trade 컬렉션에서 터틀 매수 기록 확인
+      const turtleBuyTrades = await Trade.find({
+        symbol: symbol,
+        action: 'BUY',
+        signal: { $in: ['20day_breakout', '55day_breakout'] }
+      }).sort({ tradeDate: -1 }).limit(5);
+
+      // Signal 컬렉션에서 터틀 매수 신호 기록 확인
+      const turtleBuySignals = await Signal.find({
+        symbol: symbol,
+        signalType: { $in: ['BUY_20', 'BUY_55'] },
+        status: { $in: ['executed', 'sent'] }
+      }).sort({ date: -1 }).limit(5);
+
+      return {
+        hasTurtleHistory: turtleBuyTrades.length > 0 || turtleBuySignals.length > 0,
+        tradeHistory: turtleBuyTrades,
+        signalHistory: turtleBuySignals,
+        lastTurtleBuy: turtleBuyTrades.length > 0 ? turtleBuyTrades[0] : null
+      };
+    } catch (error) {
+      console.error(`터틀 매수 이력 확인 실패 (${symbol}):`, error.message);
+      return {
+        hasTurtleHistory: false,
+        tradeHistory: [],
+        signalHistory: [],
+        lastTurtleBuy: null
+      };
+    }
+  }
+
+  /**
    * 키움 포지션을 기반으로 터틀 포지션 데이터 생성/업데이트
    */
   async createOrUpdateTurtlePosition(kiwoomPosition) {
     try {
       const symbol = kiwoomPosition.symbol;
+      
+      // 터틀 매수 이력 확인
+      const turtleHistory = await this.checkTurtleBuyHistory(symbol);
+      
+      // 터틀 매수 이력이 없으면 터틀 포지션으로 관리하지 않음
+      if (!turtleHistory.hasTurtleHistory) {
+        console.log(`⚠️ ${symbol}: 터틀 매수 이력 없음, 터틀 포지션 제외`);
+        return null;
+      }
+      
+      console.log(`✅ ${symbol}: 터틀 매수 이력 확인됨 (거래 ${turtleHistory.tradeHistory.length}개, 신호 ${turtleHistory.signalHistory.length}개)`);
       
       // 기존 터틀 포지션이 있는지 확인
       let turtlePos = this.turtlePositions.get(symbol);
@@ -90,12 +139,15 @@ class PortfolioTracker {
         turtlePos = await this.createNewTurtlePosition(kiwoomPosition);
         
         if (turtlePos) {
+          // 터틀 이력 정보 추가
+          turtlePos.turtleHistory = turtleHistory;
           this.turtlePositions.set(symbol, turtlePos);
           console.log(`🆕 ${symbol} 신규 터틀 포지션 생성`);
         }
       } else {
-        // 기존 포지션 업데이트
-        turtlePos = this.updateExistingTurtlePosition(turtlePos, kiwoomPosition);
+        // 기존 포지션 업데이트 (N값 재계산 포함)
+        turtlePos = await this.updateExistingTurtlePosition(turtlePos, kiwoomPosition);
+        turtlePos.turtleHistory = turtleHistory;
         this.turtlePositions.set(symbol, turtlePos);
         console.log(`🔄 ${symbol} 터틀 포지션 업데이트`);
       }
@@ -174,26 +226,63 @@ class PortfolioTracker {
   }
   
   /**
-   * 기존 터틀 포지션 업데이트
+   * 기존 터틀 포지션 업데이트 (N값 매일 재계산 포함)
    */
-  updateExistingTurtlePosition(turtlePosition, kiwoomPosition) {
-    // 키움 데이터로 현재 상태 업데이트
-    return {
-      ...turtlePosition,
+  async updateExistingTurtlePosition(turtlePosition, kiwoomPosition) {
+    try {
+      const symbol = kiwoomPosition.symbol;
       
-      // 현재 상태 업데이트
-      totalQuantity: kiwoomPosition.quantity,
-      currentPrice: kiwoomPosition.currentPrice,
-      avgPrice: kiwoomPosition.avgPrice,
-      unrealizedPL: kiwoomPosition.unrealizedPL,
+      // 최신 ATR(N값) 재계산
+      const priceData = await KiwoomService.getDailyData(symbol, 25);
+      let newN = turtlePosition.originalN; // 기본값: 기존 N값
       
-      // 수량 변화 감지
-      quantityChanged: turtlePosition.totalQuantity !== kiwoomPosition.quantity,
+      if (priceData.length >= 20) {
+        newN = Math.round(this.calculateATR(priceData, 20));
+        console.log(`🔄 ${symbol} N값 업데이트: ${turtlePosition.originalN} → ${newN}`);
+      }
       
-      // 동기화 시간
-      lastSyncAt: new Date().toISOString(),
-      syncSource: 'KIWOOM_UPDATE'
-    };
+      // 키움 데이터로 현재 상태 업데이트
+      return {
+        ...turtlePosition,
+        
+        // 현재 상태 업데이트
+        totalQuantity: kiwoomPosition.quantity,
+        currentPrice: kiwoomPosition.currentPrice,
+        avgPrice: kiwoomPosition.avgPrice,
+        unrealizedPL: kiwoomPosition.unrealizedPL,
+        
+        // 최신 N값으로 업데이트
+        originalN: newN,
+        currentStopLoss: Math.round(kiwoomPosition.avgPrice - (newN * 2)),
+        nextAddPrice: turtlePosition.currentUnits < 4 ? 
+          Math.round(kiwoomPosition.avgPrice + (newN * 0.5 * turtlePosition.currentUnits)) : null,
+        
+        // 리스크 정보 재계산
+        riskAmount: kiwoomPosition.quantity * (newN * 2),
+        riskPercent: ((newN * 2) / kiwoomPosition.avgPrice * 100).toFixed(2),
+        
+        // 수량 변화 감지
+        quantityChanged: turtlePosition.totalQuantity !== kiwoomPosition.quantity,
+        
+        // 동기화 시간
+        lastSyncAt: new Date().toISOString(),
+        syncSource: 'KIWOOM_UPDATE_WITH_NEW_N'
+      };
+    } catch (error) {
+      console.error(`N값 업데이트 실패 (${kiwoomPosition.symbol}):`, error.message);
+      
+      // 에러시 기존 방식으로 업데이트
+      return {
+        ...turtlePosition,
+        totalQuantity: kiwoomPosition.quantity,
+        currentPrice: kiwoomPosition.currentPrice,
+        avgPrice: kiwoomPosition.avgPrice,
+        unrealizedPL: kiwoomPosition.unrealizedPL,
+        quantityChanged: turtlePosition.totalQuantity !== kiwoomPosition.quantity,
+        lastSyncAt: new Date().toISOString(),
+        syncSource: 'KIWOOM_UPDATE_FALLBACK'
+      };
+    }
   }
   
   /**
