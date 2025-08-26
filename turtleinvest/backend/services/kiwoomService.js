@@ -6,9 +6,9 @@ class KiwoomService {
     this.isConnected = false;
     this.accountNumber = '';
     this.accessToken = '';
-    this.baseURL = 'https://api.kiwoom.com'; // 실서버
-    this.mockURL = 'https://openapi.kiwoom.com'; // 모의투자서버
-    this.useMock = true; // 모의투자 서버 사용
+    this.baseURL = 'https://openapi.kiwoom.com'; // 실서버
+    this.mockURL = 'https://openapimock.kiwoom.com'; // 모의투자서버
+    this.useMock = false; // 실서버 사용
   }
   
   // 주식 기본정보 조회 (ka10001) - 신규 추가
