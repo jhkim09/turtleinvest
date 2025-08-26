@@ -177,4 +177,5 @@ app.listen(PORT, () => {
   console.log(`🚀 TurtleInvest Server running on port ${PORT}`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
+  console.log(`🔄 Server restart timestamp: ${new Date().toISOString()}`);
 });
