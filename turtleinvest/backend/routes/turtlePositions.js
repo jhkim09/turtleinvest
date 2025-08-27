@@ -1,0 +1,277 @@
+/**
+ * 터틀 포지션 수동 등록 및 관리 API
+ */
+
+const express = require('express');
+const router = express.Router();
+const Trade = require('../models/Trade');
+const Signal = require('../models/Signal');
+const KiwoomService = require('../services/kiwoomService');
+const PortfolioTracker = require('../services/portfolioTracker');
+
+/**
+ * Tally 폼에서 터틀 매수 기록 받기 (웹훅)
+ */
+router.post('/register-from-tally', async (req, res) => {
+  try {
+    console.log('📝 Tally 터틀 매수 기록 수신:', req.body);
+    
+    const {
+      symbol_or_name,      // 종목코드 또는 종목명
+      signal_type,         // 20일 돌파 신호 / 55일 돌파 신호  
+      buy_date,           // 매수 일자
+      buy_price,          // 최초 매수가격
+      quantity,           // 매수 수량
+      turtle_stage,       // 현재 터틀 단계
+      initial_n_value,    // 매수 당시 N값(ATR)
+      memo                // 메모
+    } = req.body;
+    
+    // 종목코드 정규화 (삼성전자 → 005930)
+    let symbol = symbol_or_name;
+    if (!/^\d{6}$/.test(symbol)) {
+      // 종목명으로 입력된 경우 종목코드 변환 시도
+      const stockInfo = await findStockByName(symbol);
+      if (stockInfo) {
+        symbol = stockInfo.code;
+      } else {
+        return res.status(400).json({
+          success: false,
+          error: `종목 "${symbol_or_name}" 를 찾을 수 없습니다. 정확한 종목코드(6자리) 또는 종목명을 입력해주세요.`
+        });
+      }
+    }
+    
+    // 신호 유형 변환
+    const signalMap = {
+      '20일 돌파 신호': '20day_breakout',
+      '55일 돌파 신호': '55day_breakout'
+    };
+    const convertedSignal = signalMap[signal_type];
+    
+    // 터틀 단계 변환
+    const stageMap = {
+      '1단계 (최초 매수)': 1,
+      '2단계 (1차 추가매수)': 2,
+      '3단계 (2차 추가매수)': 3,
+      '4단계 (3차 추가매수)': 4
+    };
+    const currentUnits = stageMap[turtle_stage];
+    
+    // N값 계산 (입력값이 없으면 자동 계산)
+    let nValue = initial_n_value;
+    if (!nValue) {
+      const priceData = await KiwoomService.getDailyData(symbol, 25);
+      if (priceData.length >= 20) {
+        const portfolioTracker = new PortfolioTracker();
+        nValue = Math.round(portfolioTracker.calculateATR(priceData, 20));
+        console.log(`📊 ${symbol} N값 자동 계산: ${nValue}원`);
+      } else {
+        nValue = Math.round(buy_price * 0.02); // 임시값: 매수가의 2%
+        console.log(`⚠️ ${symbol} N값 임시 설정: ${nValue}원 (가격데이터 부족)`);
+      }
+    }
+    
+    // Trade 기록 생성
+    const tradeRecord = new Trade({
+      userId: 'manual_turtle_user',
+      symbol: symbol,
+      name: await getStockName(symbol),
+      action: 'BUY',
+      quantity: parseInt(quantity),
+      price: parseInt(buy_price),
+      totalAmount: parseInt(buy_price) * parseInt(quantity),
+      
+      // 터틀 트레이딩 정보
+      signal: convertedSignal,
+      atr: nValue,
+      nValue: nValue,
+      riskAmount: parseInt(quantity) * (nValue * 2),
+      
+      // 포지션 정보
+      stopLossPrice: Math.round(buy_price - (nValue * 2)),
+      
+      // 메타 정보
+      tradeDate: new Date(buy_date),
+      notes: `[Tally 수동등록] 터틀 ${currentUnits}단계, ${memo || '메모 없음'}`
+    });
+    
+    await tradeRecord.save();
+    
+    // Signal 기록도 생성 (일관성을 위해)
+    const signalRecord = new Signal({
+      symbol: symbol,
+      name: await getStockName(symbol),
+      signalType: convertedSignal === '20day_breakout' ? 'BUY_20' : 'BUY_55',
+      price: parseInt(buy_price),
+      atr: nValue,
+      volume: 0,
+      date: new Date(buy_date),
+      status: 'executed', // 이미 실행된 신호로 기록
+      isManualEntry: true,
+      manualNotes: memo
+    });
+    
+    await signalRecord.save();
+    
+    console.log(`✅ 터틀 매수 기록 등록 완료: ${symbol} ${currentUnits}단계`);
+    
+    // 성공 응답
+    res.json({
+      success: true,
+      message: '터틀 매수 기록이 성공적으로 등록되었습니다.',
+      data: {
+        symbol: symbol,
+        name: await getStockName(symbol),
+        stage: currentUnits,
+        nValue: nValue,
+        stopLoss: tradeRecord.stopLossPrice,
+        tradeId: tradeRecord._id,
+        signalId: signalRecord._id
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ 터틀 매수 기록 등록 실패:', error);
+    res.status(500).json({
+      success: false,
+      error: '터틀 매수 기록 등록 중 오류가 발생했습니다.',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * 터틀 포지션 목록 조회
+ */
+router.get('/list', async (req, res) => {
+  try {
+    const portfolioTracker = new PortfolioTracker();
+    const syncResult = await portfolioTracker.syncWithKiwoomAccount();
+    
+    res.json({
+      success: true,
+      data: {
+        turtlePositions: syncResult.turtlePositions,
+        syncedCount: syncResult.syncedPositions.length,
+        unmatchedCount: syncResult.unmatchedPositions.length,
+        lastSyncTime: syncResult.lastSyncTime || new Date().toISOString()
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ 터틀 포지션 조회 실패:', error);
+    res.status(500).json({
+      success: false,
+      error: '터틀 포지션 조회 중 오류가 발생했습니다.',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * 특정 종목의 터틀 상세 정보 조회
+ */
+router.get('/detail/:symbol', async (req, res) => {
+  try {
+    const { symbol } = req.params;
+    
+    // 터틀 매수 히스토리
+    const turtleHistory = await Trade.find({
+      symbol: symbol,
+      action: 'BUY',
+      signal: { $in: ['20day_breakout', '55day_breakout'] }
+    }).sort({ tradeDate: -1 });
+    
+    // 키움 현재 상태
+    const portfolioTracker = new PortfolioTracker();
+    await portfolioTracker.syncWithKiwoomAccount();
+    const currentPosition = portfolioTracker.getTurtlePosition(symbol);
+    
+    res.json({
+      success: true,
+      data: {
+        symbol: symbol,
+        currentPosition: currentPosition,
+        buyHistory: turtleHistory,
+        hasHistory: turtleHistory.length > 0,
+        totalBuys: turtleHistory.length
+      }
+    });
+    
+  } catch (error) {
+    console.error(`❌ 터틀 상세 정보 조회 실패 (${req.params.symbol}):`, error);
+    res.status(500).json({
+      success: false,
+      error: '터틀 상세 정보 조회 중 오류가 발생했습니다.',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * 터틀 포지션 수동 삭제
+ */
+router.delete('/remove/:symbol', async (req, res) => {
+  try {
+    const { symbol } = req.params;
+    
+    // Trade 기록 삭제 (선택적)
+    const deleteTradesResult = await Trade.deleteMany({
+      symbol: symbol,
+      notes: { $regex: '\\[Tally 수동등록\\]' }
+    });
+    
+    // Signal 기록 삭제 (선택적)
+    const deleteSignalsResult = await Signal.deleteMany({
+      symbol: symbol,
+      isManualEntry: true
+    });
+    
+    console.log(`🗑️ ${symbol} 터틀 기록 삭제: Trade ${deleteTradesResult.deletedCount}개, Signal ${deleteSignalsResult.deletedCount}개`);
+    
+    res.json({
+      success: true,
+      message: `${symbol} 터틀 포지션 기록이 삭제되었습니다.`,
+      data: {
+        deletedTrades: deleteTradesResult.deletedCount,
+        deletedSignals: deleteSignalsResult.deletedCount
+      }
+    });
+    
+  } catch (error) {
+    console.error(`❌ 터틀 포지션 삭제 실패 (${req.params.symbol}):`, error);
+    res.status(500).json({
+      success: false,
+      error: '터틀 포지션 삭제 중 오류가 발생했습니다.',
+      details: error.message
+    });
+  }
+});
+
+// 헬퍼 함수들
+async function findStockByName(stockName) {
+  // StockName 모델에서 종목명으로 검색
+  try {
+    const StockName = require('../models/StockName');
+    const stock = await StockName.findOne({
+      name: { $regex: stockName, $options: 'i' }
+    });
+    return stock ? { code: stock.code, name: stock.name } : null;
+  } catch (error) {
+    console.log('종목명 검색 실패:', error.message);
+    return null;
+  }
+}
+
+async function getStockName(symbol) {
+  try {
+    const StockName = require('../models/StockName');
+    const stock = await StockName.findOne({ code: symbol });
+    return stock ? stock.name : `종목_${symbol}`;
+  } catch (error) {
+    return `종목_${symbol}`;
+  }
+}
+
+module.exports = router;

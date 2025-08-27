@@ -18,6 +18,7 @@ const testDataSourcesRoutes = require('./routes/testDataSources');
 const superstocksRoutes = require('./routes/superstocks');
 const turtlePyramidingRoutes = require('./routes/turtlePyramiding');
 const stockNamesRoutes = require('./routes/stockNames');
+const turtlePositionsRoutes = require('./routes/turtlePositions');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -75,6 +76,7 @@ app.use('/api/test-data-sources', testDataSourcesRoutes);
 app.use('/api/superstocks', superstocksRoutes);
 app.use('/api/turtle-pyramiding', turtlePyramidingRoutes);
 app.use('/api/stock-names', stockNamesRoutes);
+app.use('/api/turtle-positions', turtlePositionsRoutes);
 
 // Health Check (향상된 버전)
 app.get('/api/health', async (req, res) => {
