@@ -118,6 +118,7 @@ router.post('/register-from-tally', async (req, res) => {
     }
     
     // Trade 기록 생성
+    const totalAmount = parseInt(buy_price) * parseInt(quantity);
     const tradeRecord = new Trade({
       userId: 'manual_turtle_user',
       symbol: symbol,
@@ -125,7 +126,12 @@ router.post('/register-from-tally', async (req, res) => {
       action: 'BUY',
       quantity: parseInt(quantity),
       price: parseInt(buy_price),
-      totalAmount: parseInt(buy_price) * parseInt(quantity),
+      totalAmount: totalAmount,
+      
+      // 수수료 관련 (pre-save 미들웨어에서 자동 계산되지만 초기값 설정)
+      commission: Math.round(totalAmount * 0.00015),
+      tax: 0,
+      netAmount: totalAmount + Math.round(totalAmount * 0.00015),
       
       // 터틀 트레이딩 정보
       signal: convertedSignal,
