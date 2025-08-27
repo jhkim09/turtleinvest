@@ -140,6 +140,12 @@ TurtleInvest (API 전용)
 - `GET /api/financial-data/cache/stats` - 캐시 통계
 - `GET /api/financial-data/stock/:code` - 개별 종목 재무데이터
 
+### 터틀 포지션 관리 (2025.08.27 추가)
+- `POST /api/turtle-positions/register-from-tally` - Tally 폼 터틀 매수 기록 웹훅
+- `GET /api/turtle-positions/list` - 터틀 포지션 목록 및 키움 동기화
+- `GET /api/turtle-positions/detail/:symbol` - 특정 종목 터틀 상세 정보
+- `DELETE /api/turtle-positions/remove/:symbol` - 터틀 포지션 기록 삭제
+
 ---
 
 **📝 개발 시작일**: 2024.08.17  
