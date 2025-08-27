@@ -181,16 +181,27 @@ class PortfolioTracker {
     try {
       const symbol = kiwoomPosition.symbol;
       
-      // ATR 계산을 위한 일봉 데이터 조회
-      const priceData = await KiwoomService.getDailyData(symbol, 25);
+      // 터틀 매수 이력에서 N값 가져오기
+      const turtleHistory = await this.checkTurtleBuyHistory(symbol);
+      let atr = 0;
       
-      if (priceData.length < 20) {
-        console.log(`⚠️ ${symbol}: 일봉 데이터 부족 (${priceData.length}일), 터틀 포지션 생성 불가`);
-        return null;
+      if (turtleHistory.lastTurtleBuy && turtleHistory.lastTurtleBuy.nValue) {
+        atr = turtleHistory.lastTurtleBuy.nValue;
+        console.log(`📊 ${symbol}: 터틀 기록에서 N값 사용 = ${atr}원`);
+      } else {
+        // ATR 계산을 위한 일봉 데이터 조회 (fallback)
+        const priceData = await KiwoomService.getDailyData(symbol, 25);
+        
+        if (priceData.length < 20) {
+          // 일봉 데이터도 없으면 키움 평균가의 2%를 임시 N값으로 사용
+          atr = Math.round(kiwoomPosition.avgPrice * 0.02);
+          console.log(`⚠️ ${symbol}: 일봉 데이터 부족, 임시 N값 = ${atr}원 (평균가 ${kiwoomPosition.avgPrice}원의 2%)`);
+        } else {
+          // ATR 계산
+          atr = this.calculateATR(priceData, 20);
+          console.log(`📊 ${symbol}: 일봉 데이터로 N값 계산 = ${atr}원`);
+        }
       }
-      
-      // ATR 계산
-      const atr = this.calculateATR(priceData, 20);
       
       // 유닛 사이즈 추정 (임의로 현재 수량을 기준으로)
       const estimatedUnitSize = Math.floor(kiwoomPosition.quantity / 1) || kiwoomPosition.quantity;
