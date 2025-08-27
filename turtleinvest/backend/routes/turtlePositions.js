@@ -153,14 +153,44 @@ router.post('/register-from-tally', async (req, res) => {
     const signalRecord = new Signal({
       symbol: symbol,
       name: await getStockName(symbol),
-      signalType: convertedSignal === '20day_breakout' ? 'BUY_20' : 'BUY_55',
-      price: parseInt(buy_price),
-      atr: nValue,
-      volume: 0,
       date: new Date(buy_date),
+      signalType: convertedSignal === '20day_breakout' ? 'BUY_20' : 'BUY_55',
+      
+      // 가격 정보 (필수)
+      currentPrice: parseInt(buy_price),
+      breakoutPrice: parseInt(buy_price), // 매수가를 돌파가로 사용
+      
+      // 기술적 지표 (필수) - 임시값으로 설정
+      high20: Math.round(parseInt(buy_price) * 1.1), // 매수가의 110%
+      low10: Math.round(parseInt(buy_price) * 0.9),  // 매수가의 90%
+      
+      // ATR 정보 (필수)
+      atr: nValue,
+      nValue: nValue,
+      
+      // 볼륨 정보 (필수) - 수동 등록이므로 임시값
+      volume: 100000, // 임시 거래량
+      avgVolume20: 80000, // 임시 평균 거래량
+      volumeRatio: 1.25, // 임시 거래량 비율
+      
+      // 신호 강도 (필수)
+      signalStrength: 'medium',
+      
+      // 처리 상태
       status: 'executed', // 이미 실행된 신호로 기록
-      isManualEntry: true,
-      manualNotes: memo
+      
+      // 수동 등록 메타데이터
+      isPrimarySignal: true,
+      filterApplied: false,
+      
+      // 추천 액션
+      recommendedAction: {
+        action: 'BUY',
+        quantity: parseInt(quantity),
+        riskAmount: parseInt(quantity) * (nValue * 2),
+        stopLossPrice: Math.round(buy_price - (nValue * 2)),
+        reasoning: `[Tally 수동등록] 터틀 ${currentUnits}단계 매수`
+      }
     });
     
     await signalRecord.save();
