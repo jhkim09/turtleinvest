@@ -78,20 +78,34 @@ class PortfolioTracker {
   }
   
   /**
+   * 종목코드 정규화 (A122870 → 122870)
+   */
+  normalizeSymbol(symbol) {
+    if (typeof symbol === 'string' && symbol.startsWith('A') && symbol.length === 7) {
+      return symbol.substring(1); // A 접두사 제거
+    }
+    return symbol;
+  }
+
+  /**
    * 터틀 매수 이력 확인
    */
   async checkTurtleBuyHistory(symbol) {
     try {
+      // 종목코드 정규화 (키움: A122870 → DB: 122870)
+      const normalizedSymbol = this.normalizeSymbol(symbol);
+      console.log(`🔍 터틀 이력 확인: ${symbol} → ${normalizedSymbol}`);
+      
       // Trade 컬렉션에서 터틀 매수 기록 확인
       const turtleBuyTrades = await Trade.find({
-        symbol: symbol,
+        symbol: normalizedSymbol,
         action: 'BUY',
         signal: { $in: ['20day_breakout', '55day_breakout'] }
       }).sort({ tradeDate: -1 }).limit(5);
 
       // Signal 컬렉션에서 터틀 매수 신호 기록 확인
       const turtleBuySignals = await Signal.find({
-        symbol: symbol,
+        symbol: normalizedSymbol,
         signalType: { $in: ['BUY_20', 'BUY_55'] },
         status: { $in: ['executed', 'sent'] }
       }).sort({ date: -1 }).limit(5);
