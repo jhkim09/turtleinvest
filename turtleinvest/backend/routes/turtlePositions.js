@@ -14,18 +14,37 @@ const PortfolioTracker = require('../services/portfolioTracker');
  */
 router.post('/register-from-tally', async (req, res) => {
   try {
-    console.log('📝 Tally 터틀 매수 기록 수신:', req.body);
+    console.log('📝 Tally 터틀 매수 기록 수신:', JSON.stringify(req.body, null, 2));
     
-    const {
-      symbol_or_name,      // 종목코드 또는 종목명
-      signal_type,         // 20일 돌파 신호 / 55일 돌파 신호  
-      buy_date,           // 매수 일자
-      buy_price,          // 최초 매수가격
-      quantity,           // 매수 수량
-      turtle_stage,       // 현재 터틀 단계
-      initial_n_value,    // 매수 당시 N값(ATR)
-      memo                // 메모
-    } = req.body;
+    // Tally 데이터 구조 파싱
+    const fields = req.body.data?.fields || [];
+    console.log('📊 Tally fields:', JSON.stringify(fields, null, 2));
+    
+    // 필드 데이터 추출 함수
+    const getFieldValue = (fields, key) => {
+      const field = fields.find(f => f.key === key || f.label?.includes(key));
+      return field?.value || null;
+    };
+    
+    const symbol_or_name = getFieldValue(fields, '종목코드') || getFieldValue(fields, '종목명');
+    const signal_type = getFieldValue(fields, '신호');
+    const buy_date = getFieldValue(fields, '매수 일자') || getFieldValue(fields, '일자');
+    const buy_price = getFieldValue(fields, '가격');
+    const quantity = getFieldValue(fields, '수량');
+    const turtle_stage = getFieldValue(fields, '단계');
+    const initial_n_value = getFieldValue(fields, 'N값') || getFieldValue(fields, 'ATR');
+    const memo = getFieldValue(fields, '메모');
+    
+    console.log('🔍 추출된 데이터:', {
+      symbol_or_name,
+      signal_type,
+      buy_date,
+      buy_price,
+      quantity,
+      turtle_stage,
+      initial_n_value,
+      memo
+    });
     
     // 종목코드 정규화 (삼성전자 → 005930)
     let symbol = symbol_or_name;
