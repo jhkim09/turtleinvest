@@ -26,12 +26,22 @@ router.post('/register-from-tally', async (req, res) => {
       return field?.value || null;
     };
     
+    // Multiple Choice 값을 텍스트로 변환하는 함수
+    const getMultipleChoiceText = (fields, key) => {
+      const field = fields.find(f => f.key === key || f.label?.includes(key));
+      if (!field || !field.value || !Array.isArray(field.value)) return null;
+      
+      const selectedId = field.value[0]; // 첫 번째 선택값
+      const option = field.options?.find(opt => opt.id === selectedId);
+      return option?.text || null;
+    };
+    
     const symbol_or_name = getFieldValue(fields, '종목코드') || getFieldValue(fields, '종목명');
-    const signal_type = getFieldValue(fields, '신호');
+    const signal_type = getMultipleChoiceText(fields, '신호');
     const buy_date = getFieldValue(fields, '매수 일자') || getFieldValue(fields, '일자');
     const buy_price = getFieldValue(fields, '가격');
     const quantity = getFieldValue(fields, '수량');
-    const turtle_stage = getFieldValue(fields, '단계');
+    const turtle_stage = getMultipleChoiceText(fields, '단계');
     const initial_n_value = getFieldValue(fields, 'N값') || getFieldValue(fields, 'ATR');
     const memo = getFieldValue(fields, '메모');
     
@@ -45,6 +55,22 @@ router.post('/register-from-tally', async (req, res) => {
       initial_n_value,
       memo
     });
+    
+    // 필수 데이터 검증
+    if (!symbol_or_name || !signal_type || !buy_date || !buy_price || !quantity || !turtle_stage) {
+      return res.status(400).json({
+        success: false,
+        error: '필수 입력값이 누락되었습니다.',
+        missing: {
+          종목: !symbol_or_name,
+          신호유형: !signal_type,
+          매수일자: !buy_date,
+          매수가격: !buy_price,
+          매수수량: !quantity,
+          터틀단계: !turtle_stage
+        }
+      });
+    }
     
     // 종목코드 정규화 (삼성전자 → 005930)
     let symbol = symbol_or_name;
