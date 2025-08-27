@@ -149,14 +149,12 @@ class PortfolioTracker {
       let turtlePos = this.turtlePositions.get(symbol);
       
       if (!turtlePos) {
-        // 신규 터틀 포지션 생성 - ATR 계산 필요
-        turtlePos = await this.createNewTurtlePosition(kiwoomPosition);
+        // 신규 터틀 포지션 생성 - 터틀 기록 기반
+        turtlePos = this.createTurtlePositionFromHistory(kiwoomPosition, turtleHistory);
         
         if (turtlePos) {
-          // 터틀 이력 정보 추가
-          turtlePos.turtleHistory = turtleHistory;
           this.turtlePositions.set(symbol, turtlePos);
-          console.log(`🆕 ${symbol} 신규 터틀 포지션 생성`);
+          console.log(`🆕 ${symbol} 신규 터틀 포지션 생성 (기록 기반)`);
         }
       } else {
         // 기존 포지션 업데이트 (N값 재계산 포함)
@@ -246,6 +244,74 @@ class PortfolioTracker {
       
     } catch (error) {
       console.error(`신규 터틀 포지션 생성 실패 (${kiwoomPosition.symbol}):`, error.message);
+      return null;
+    }
+  }
+  
+  /**
+   * 터틀 기록 기반으로 포지션 생성 (일봉 데이터 불필요)
+   */
+  createTurtlePositionFromHistory(kiwoomPosition, turtleHistory) {
+    try {
+      const symbol = this.normalizeSymbol(kiwoomPosition.symbol);
+      
+      // 터틀 기록에서 N값 추출
+      let nValue = 0;
+      if (turtleHistory.lastTurtleBuy && turtleHistory.lastTurtleBuy.nValue) {
+        nValue = turtleHistory.lastTurtleBuy.nValue;
+        console.log(`📊 ${symbol}: 터틀 기록 N값 = ${nValue}원`);
+      } else {
+        // 임시 N값: 키움 평균가의 2%
+        nValue = Math.round(kiwoomPosition.avgPrice * 0.02);
+        console.log(`⚠️ ${symbol}: 임시 N값 = ${nValue}원 (평균가 ${kiwoomPosition.avgPrice}원의 2%)`);
+      }
+      
+      // 유닛 사이즈와 단계 추정
+      const estimatedUnitSize = kiwoomPosition.quantity;
+      const estimatedUnits = 1; // 기본 1단계로 가정
+      
+      const turtlePosition = {
+        // 기본 정보
+        symbol: symbol,
+        name: kiwoomPosition.name,
+        
+        // 키움 데이터 (현재 상태)
+        totalQuantity: kiwoomPosition.quantity,
+        currentPrice: kiwoomPosition.currentPrice,
+        avgPrice: kiwoomPosition.avgPrice,
+        unrealizedPL: kiwoomPosition.unrealizedPL,
+        
+        // 터틀 추적 데이터
+        originalEntryPrice: kiwoomPosition.avgPrice,
+        originalN: nValue,
+        currentUnits: estimatedUnits,
+        maxUnits: 4,
+        unitSize: estimatedUnitSize,
+        
+        // 계산된 값들
+        currentStopLoss: Math.round(kiwoomPosition.avgPrice - (nValue * 2)),
+        nextAddPrice: estimatedUnits < 4 ? 
+          Math.round(kiwoomPosition.avgPrice + (nValue * 0.5)) : null,
+        
+        // 메타데이터
+        createdAt: new Date().toISOString(),
+        lastSyncAt: new Date().toISOString(),
+        syncSource: 'TURTLE_HISTORY_BASED',
+        
+        // 리스크 정보
+        riskAmount: kiwoomPosition.quantity * (nValue * 2),
+        riskPercent: ((nValue * 2) / kiwoomPosition.avgPrice * 100).toFixed(2),
+        
+        // 터틀 이력
+        turtleHistory: turtleHistory
+      };
+      
+      console.log(`📊 ${symbol} 터틀 데이터 생성: N=${nValue}, 손절=${turtlePosition.currentStopLoss.toLocaleString()}원, 다음추가=${turtlePosition.nextAddPrice?.toLocaleString() || 'N/A'}원`);
+      
+      return turtlePosition;
+      
+    } catch (error) {
+      console.error(`터틀 기록 기반 포지션 생성 실패 (${kiwoomPosition.symbol}):`, error.message);
       return null;
     }
   }
