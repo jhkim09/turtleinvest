@@ -96,11 +96,12 @@ class PortfolioTracker {
       const normalizedSymbol = this.normalizeSymbol(symbol);
       console.log(`🔍 터틀 이력 확인: ${symbol} → ${normalizedSymbol}`);
       
-      // Trade 컬렉션에서 터틀 매수 기록 확인
+      // Trade 컬렉션에서 터틀 매수 기록 확인 (모든 사용자 포함)
       const turtleBuyTrades = await Trade.find({
         symbol: normalizedSymbol,
         action: 'BUY',
-        signal: { $in: ['20day_breakout', '55day_breakout'] }
+        signal: { $in: ['20day_breakout', '55day_breakout'] },
+        userId: { $in: ['default', 'manual_turtle_user'] }
       }).sort({ tradeDate: -1 }).limit(5);
 
       // Signal 컬렉션에서 터틀 매수 신호 기록 확인

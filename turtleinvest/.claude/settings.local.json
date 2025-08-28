@@ -4,7 +4,13 @@
       "WebFetch(domain:turtleinvest.onrender.com)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "mcp__tally__add_text",
+      "mcp__tally__add_text_input_question",
+      "mcp__tally__add_multiple_choice_question",
+      "mcp__tally__add_input_date_question",
+      "mcp__tally__add_number_input_question",
+      "Bash(node:*)"
     ],
     "deny": [],
     "ask": []
