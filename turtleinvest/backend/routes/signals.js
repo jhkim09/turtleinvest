@@ -25,6 +25,7 @@ router.get('/health', async (req, res) => {
         turtleAnalysis: '/api/signals/analyze',
         buySignals: '/api/signals/make-analysis/buy',
         sellSignals: '/api/signals/make-analysis/sell',
+        portfolioNValues: '/api/signals/portfolio-n-values',
         legacyAnalysis: '/api/signals/make-analysis (deprecated)'
       }
     });
@@ -1390,6 +1391,150 @@ router.post('/sell-analysis', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'SELL_ANALYSIS_FAILED',
+      message: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// 현재 보유 종목의 N값(ATR) 조회 API
+router.get('/portfolio-n-values', async (req, res) => {
+  try {
+    const { apiKey } = req.query;
+    
+    // API 키 검증
+    const validApiKey = process.env.MAKE_API_KEY || 'TtL_9K2m8X7nQ4pE6wR3vY5uI8oP1aSdF7gH9jK2mN5vB8xC3zE6rT9yU4iO7pL0';
+    if (!apiKey || apiKey !== validApiKey) {
+      return res.status(401).json({
+        success: false,
+        error: 'UNAUTHORIZED',
+        message: 'Invalid API key'
+      });
+    }
+    
+    console.log('📊 보유 종목 N값(ATR) 조회 요청');
+    
+    // 키움 API에서 보유 종목 조회
+    const KiwoomService = require('../services/kiwoomService');
+    let accountData = null;
+    let portfolioNValues = [];
+    
+    try {
+      accountData = await KiwoomService.getAccountBalance();
+      
+      if (accountData && accountData.positions && accountData.positions.length > 0) {
+        // 각 보유 종목의 N값(ATR) 계산
+        for (const position of accountData.positions) {
+          try {
+            console.log(`📈 ${position.symbol} (${position.name}) N값 계산 중...`);
+            
+            // 38일 가격 데이터 조회 (ATR 계산용)
+            const priceData = await TurtleAnalyzer.getPriceData(position.symbol, 25);
+            
+            if (priceData && priceData.length >= 21) {
+              const atr = TurtleAnalyzer.calculateATR(priceData.slice(0, 21));
+              const nValue = Math.round(atr);
+              const twoN = nValue * 2;
+              const stopLossPrice = position.avgPrice - twoN;
+              const riskAmount = position.quantity * twoN;
+              
+              // 현재 손익률 계산
+              const unrealizedPL = position.unrealizedPL || 0;
+              const unrealizedPLPercent = position.avgPrice > 0 ? 
+                ((position.currentPrice - position.avgPrice) / position.avgPrice) * 100 : 0;
+              
+              portfolioNValues.push({
+                symbol: position.symbol,
+                name: position.name,
+                currentPrice: position.currentPrice,
+                avgPrice: position.avgPrice,
+                quantity: position.quantity,
+                marketValue: position.currentPrice * position.quantity,
+                unrealizedPL: unrealizedPL,
+                unrealizedPLPercent: Math.round(unrealizedPLPercent * 100) / 100,
+                nValue: nValue,                    // N값 (ATR)
+                twoN: twoN,                       // 2N (손절 거리)
+                stopLossPrice: Math.round(stopLossPrice),  // 터틀 손절가
+                riskAmount: Math.round(riskAmount),        // 종목별 리스크 금액
+                riskPercent: position.avgPrice > 0 ? Math.round((twoN / position.avgPrice) * 10000) / 100 : 0, // 리스크 퍼센트
+                isNearStopLoss: position.currentPrice <= stopLossPrice, // 손절가 근접 여부
+                priceFromStopLoss: position.currentPrice - stopLossPrice // 손절가와의 거리
+              });
+              
+            } else {
+              // 가격 데이터 부족시 추정값 사용
+              const estimatedN = Math.round(position.currentPrice * 0.02); // 현재가의 2%로 추정
+              portfolioNValues.push({
+                symbol: position.symbol,
+                name: position.name,
+                currentPrice: position.currentPrice,
+                avgPrice: position.avgPrice,
+                quantity: position.quantity,
+                marketValue: position.currentPrice * position.quantity,
+                unrealizedPL: position.unrealizedPL || 0,
+                unrealizedPLPercent: position.avgPrice > 0 ? 
+                  Math.round(((position.currentPrice - position.avgPrice) / position.avgPrice) * 10000) / 100 : 0,
+                nValue: estimatedN,
+                twoN: estimatedN * 2,
+                stopLossPrice: Math.round(position.avgPrice - (estimatedN * 2)),
+                riskAmount: Math.round(position.quantity * estimatedN * 2),
+                riskPercent: position.avgPrice > 0 ? Math.round((estimatedN * 2 / position.avgPrice) * 10000) / 100 : 0,
+                isNearStopLoss: false,
+                priceFromStopLoss: null,
+                dataStatus: 'ESTIMATED' // 추정값임을 표시
+              });
+            }
+            
+          } catch (error) {
+            console.error(`❌ ${position.symbol} N값 계산 실패:`, error.message);
+          }
+        }
+      }
+    } catch (accountError) {
+      console.error('❌ 계좌 조회 실패:', accountError.message);
+    }
+    
+    // 포트폴리오 전체 리스크 분석
+    const totalMarketValue = portfolioNValues.reduce((sum, p) => sum + p.marketValue, 0);
+    const totalRiskAmount = portfolioNValues.reduce((sum, p) => sum + p.riskAmount, 0);
+    const portfolioRiskPercent = totalMarketValue > 0 ? (totalRiskAmount / totalMarketValue) * 100 : 0;
+    const nearStopLossCount = portfolioNValues.filter(p => p.isNearStopLoss).length;
+    
+    const result = {
+      success: true,
+      timestamp: new Date().toISOString(),
+      summary: {
+        totalPositions: portfolioNValues.length,
+        totalMarketValue: totalMarketValue,
+        totalRiskAmount: totalRiskAmount,
+        portfolioRiskPercent: Math.round(portfolioRiskPercent * 100) / 100,
+        nearStopLossCount: nearStopLossCount,
+        averageNValue: portfolioNValues.length > 0 ? 
+          Math.round(portfolioNValues.reduce((sum, p) => sum + p.nValue, 0) / portfolioNValues.length) : 0
+      },
+      positions: portfolioNValues.sort((a, b) => b.marketValue - a.marketValue), // 시가총액 순 정렬
+      accountInfo: accountData ? {
+        totalAsset: accountData.totalAsset,
+        cash: accountData.cash,
+        positionCount: accountData.positions.length
+      } : null,
+      metadata: {
+        requestedBy: 'api_client',
+        analysisType: 'portfolio_n_values',
+        market: 'KRX',
+        apiVersion: '1.0'
+      }
+    };
+    
+    console.log(`✅ 포트폴리오 N값 분석 완료: ${portfolioNValues.length}개 종목, 평균 N값: ${result.summary.averageNValue}원`);
+    
+    res.json(result);
+    
+  } catch (error) {
+    console.error('❌ 포트폴리오 N값 분석 실패:', error);
+    res.status(500).json({
+      success: false,
+      error: 'PORTFOLIO_N_VALUES_FAILED',
       message: error.message,
       timestamp: new Date().toISOString()
     });
