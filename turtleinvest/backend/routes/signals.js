@@ -1325,7 +1325,7 @@ router.post('/sell-analysis', async (req, res) => {
         
         if (signal) {
           // 매도 조건 확인
-          const sellConditions = TurtleAnalyzer.checkSellConditions(signal, position);
+          const sellConditions = await TurtleAnalyzer.checkSellConditions(signal, position);
           
           if (sellConditions.shouldSell) {
             sellSignals.push({

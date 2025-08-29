@@ -601,7 +601,7 @@ class TurtleAnalyzer {
   }
   
   // 매도 조건 확인 (보유 종목용)
-  static checkSellConditions(signal, position) {
+  static async checkSellConditions(signal, position) {
     const currentPrice = position.currentPrice;
     const avgPrice = position.avgPrice;
     const unrealizedPL = position.unrealizedPL;
@@ -615,27 +615,47 @@ class TurtleAnalyzer {
       conditions: {
         system1_sell: currentPrice < indicators.low10,     // 10일 최저가 하향돌파
         system2_sell: currentPrice < indicators.low52w,    // 52주 신저가 하향돌파
-        stopLoss: unrealizedPLPercent < -10,               // 10% 손실
-        bigLoss: unrealizedPLPercent < -20                 // 20% 큰 손실
+        turtle2N_stopLoss: false,                          // 터틀 2N 손절 (아래에서 계산)
+        bigLoss: unrealizedPLPercent < -15                 // 15% 이상 큰 손실 (비상)
       }
     };
     
-    // 매도 신호 우선순위
-    if (sellConditions.conditions.bigLoss) {
+    // 터틀 2N 손절 계산 (핵심 룰)
+    try {
+      const priceData = await this.getPriceData(position.symbol, 25);
+      if (priceData && priceData.length >= 21) {
+        const atr = this.calculateATR(priceData.slice(0, 21));
+        const twoN = atr * 2; // 2N = 2 × ATR
+        const stopLossPrice = avgPrice - twoN;
+        sellConditions.conditions.turtle2N_stopLoss = currentPrice <= stopLossPrice;
+        sellConditions.stopLossPrice = stopLossPrice;
+        
+        console.log(`🐢 ${position.symbol} 터틀 2N 손절 체크: 매수가 ${avgPrice}원, ATR ${Math.round(atr)}원, 2N 손절가 ${Math.round(stopLossPrice)}원, 현재가 ${currentPrice}원, 손절 필요: ${sellConditions.conditions.turtle2N_stopLoss}`);
+      }
+    } catch (error) {
+      console.error(`❌ ${position.symbol} 2N 손절가 계산 실패:`, error.message);
+      // ATR 계산 실패시 백업: 매수가 대비 5% 하락을 2N으로 추정
+      const backupStopLoss = avgPrice * 0.95;
+      sellConditions.conditions.turtle2N_stopLoss = currentPrice <= backupStopLoss;
+      sellConditions.stopLossPrice = backupStopLoss;
+    }
+    
+    // 매도 신호 우선순위 (터틀 2N 룰 우선)
+    if (sellConditions.conditions.turtle2N_stopLoss) {
       sellConditions.shouldSell = true;
-      sellConditions.reason = '큰 손실 손절 (20% 이상)';
+      sellConditions.reason = `터틀 2N 손절 (매수가 ${avgPrice.toLocaleString()}원 → 손절가 ${Math.round(sellConditions.stopLossPrice).toLocaleString()}원)`;
       sellConditions.urgency = 'URGENT';
+    } else if (sellConditions.conditions.bigLoss) {
+      sellConditions.shouldSell = true;
+      sellConditions.reason = '큰 손실 발생 (15% 이상)';
+      sellConditions.urgency = 'HIGH';
     } else if (sellConditions.conditions.system1_sell) {
       sellConditions.shouldSell = true;
       sellConditions.reason = '터틀 System 1: 10일 최저가 하향돌파';
-      sellConditions.urgency = 'HIGH';
+      sellConditions.urgency = 'MEDIUM';
     } else if (sellConditions.conditions.system2_sell) {
       sellConditions.shouldSell = true;
       sellConditions.reason = '터틀 System 2: 52주 신저가 하향돌파';
-      sellConditions.urgency = 'HIGH';
-    } else if (sellConditions.conditions.stopLoss) {
-      sellConditions.shouldSell = true;
-      sellConditions.reason = '손절 기준 (10% 손실)';
       sellConditions.urgency = 'MEDIUM';
     }
     
