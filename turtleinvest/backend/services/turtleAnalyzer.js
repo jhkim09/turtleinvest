@@ -554,16 +554,27 @@ class TurtleAnalyzer {
     
     console.log(`🐢 터틀 분석 대상: 전체 ${allStocks.length}개 상장주식 (코스피 250 + 코스닥 250)`);
     
-    return allStocks.map(symbol => ({
-      symbol: symbol,
-      name: this.getStockName(symbol)
-    }));
+    // 종목명을 병렬로 조회
+    const stocksWithNames = await Promise.all(
+      allStocks.map(async (symbol) => ({
+        symbol: symbol,
+        name: await this.getStockName(symbol)
+      }))
+    );
+    
+    return stocksWithNames;
   }
   
-  // 종목명 반환 (슈퍼스톡스와 동일한 매핑 사용)
-  static getStockName(symbol) {
-    const SuperstocksAnalyzer = require('./superstocksAnalyzer');
-    return SuperstocksAnalyzer.getStockName(symbol);
+  // 종목명 반환 (StockNameCacheService 사용)
+  static async getStockName(symbol) {
+    try {
+      const StockNameCacheService = require('./stockNameCacheService');
+      const name = await StockNameCacheService.getStockName(symbol);
+      return name;
+    } catch (error) {
+      console.error(`종목명 조회 실패 (${symbol}):`, error.message);
+      return `종목${symbol}`;
+    }
   }
   
   // 가격 데이터 가져오기 (키움 API 연동)
