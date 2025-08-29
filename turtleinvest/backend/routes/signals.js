@@ -587,42 +587,7 @@ router.post('/make-analysis/buy', async (req, res) => {
         market: 'KRX',
         apiVersion: '3.0'
       },
-      slackMessage: SlackMessageFormatter.formatIntegratedAnalysis({
-        timestamp: new Date().toISOString(),
-        summary: {
-          turtleSignals: buySignals.length,
-          qualifiedSuperstocks: qualifiedSuperstocks.length,
-          overlappingStocks: buyOpportunities.length,
-          hasOverlap: buyOpportunities.length > 0
-        },
-        turtleTrading: {
-          signals: buySignals.map(signal => ({
-            symbol: signal.symbol,
-            name: signal.name,
-            signalType: signal.signalType,
-            currentPrice: signal.currentPrice,
-            action: signal.recommendedAction?.action || 'BUY',
-            reasoning: signal.recommendedAction?.reasoning || ''
-          }))
-        },
-        superstocks: {
-          qualifiedStocks: qualifiedSuperstocks.map(stock => ({
-            symbol: stock.symbol,
-            name: stock.name,
-            currentPrice: stock.currentPrice,
-            revenueGrowth3Y: stock.revenueGrowth3Y,
-            netIncomeGrowth3Y: stock.netIncomeGrowth3Y,
-            psr: stock.psr
-          }))
-        },
-        premiumOpportunities: buyOpportunities,
-        investmentSettings: {
-          budget: budget,
-          budgetDisplay: `${(budget/10000).toFixed(0)}만원`,
-          riskPerTrade: budget * 0.02,
-          riskDisplay: `${(budget * 0.02 / 10000).toFixed(0)}만원`
-        }
-      })
+      slackMessage: SlackMessageFormatter.formatBuySignals(result)
     };
     
     res.json(result);

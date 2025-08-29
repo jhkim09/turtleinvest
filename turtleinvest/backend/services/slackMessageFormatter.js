@@ -103,6 +103,79 @@ class SlackMessageFormatter {
     }
   }
   
+  // BUY 신호 전용 포맷터
+  static formatBuySignals(buyAnalysisResult) {
+    try {
+      const timestamp = new Date(buyAnalysisResult.timestamp).toLocaleDateString('ko-KR');
+      let message = `📈 **매수 신호 알림** (${timestamp})\n\n`;
+      
+      // 터틀 BUY 신호
+      if (buyAnalysisResult.buySignals.turtle && buyAnalysisResult.buySignals.turtle.length > 0) {
+        message += `🐢 **터틀 매수 신호**\n\n`;
+        buyAnalysisResult.buySignals.turtle.forEach(signal => {
+          message += `📈 **${signal.name}** (${signal.symbol})\n`;
+          message += `   • 액션: ${signal.action}\n`;
+          message += `   • 현재가: ${signal.currentPrice.toLocaleString()}원\n`;
+          message += `   • 신호: ${signal.signalType}\n`;
+          if (signal.reasoning) {
+            message += `   • ${signal.reasoning}\n`;
+          }
+          message += '\n';
+        });
+      }
+      
+      // 슈퍼스톡 BUY 후보
+      if (buyAnalysisResult.buySignals.superstocks && buyAnalysisResult.buySignals.superstocks.length > 0) {
+        message += `⭐ **슈퍼스톡 매수 후보**\n\n`;
+        buyAnalysisResult.buySignals.superstocks.forEach((stock, index) => {
+          message += `${index + 1}. **${stock.name}** (${stock.symbol})\n`;
+          message += `   • 현재가: ${stock.currentPrice.toLocaleString()}원\n`;
+          message += `   • 매출성장: ${stock.revenueGrowth3Y.toFixed(1)}%\n`;
+          message += `   • 순이익성장: ${stock.netIncomeGrowth3Y.toFixed(1)}%\n`;
+          message += `   • PSR: ${stock.psr.toFixed(2)}\n`;
+          message += `   • 등급: ${stock.score}\n\n`;
+        });
+      }
+      
+      // 프리미엄 매수 기회 (터틀 + 슈퍼스톡 겹치는 경우)
+      if (buyAnalysisResult.buySignals.premium && buyAnalysisResult.buySignals.premium.length > 0) {
+        message += `💎 **프리미엄 매수 기회** (터틀 + 슈퍼스톡)\n\n`;
+        buyAnalysisResult.buySignals.premium.forEach(stock => {
+          message += `🎯 **${stock.name}** (${stock.symbol})\n`;
+          message += `   • 터틀신호: ${stock.turtleSignal}\n`;
+          message += `   • 터틀액션: ${stock.turtleAction}\n`;
+          message += `   • 슈퍼스톡등급: ${stock.superstocksScore}\n`;
+          message += `   • 현재가: ${stock.currentPrice.toLocaleString()}원\n`;
+          message += `   • 매출성장: ${stock.superstocksData.revenueGrowth3Y.toFixed(1)}%\n`;
+          message += `   • PSR: ${stock.superstocksData.psr.toFixed(2)}\n\n`;
+        });
+      }
+      
+      // 투자 설정 요약
+      if (buyAnalysisResult.investmentSettings) {
+        message += `💰 **투자설정**: ${buyAnalysisResult.investmentSettings.budgetDisplay} 예산, 종목당 리스크 ${buyAnalysisResult.investmentSettings.riskDisplay}\n`;
+      }
+      
+      // 요약 정보
+      const summary = buyAnalysisResult.summary;
+      message += `📊 **요약**: 터틀 매수신호 ${summary.turtleBuySignals || 0}개, 슈퍼스톡 후보 ${summary.qualifiedSuperstocks || 0}개`;
+      if (summary.premiumBuyOpportunities > 0) {
+        message += `, 프리미엄 기회 ${summary.premiumBuyOpportunities}개`;
+      }
+      
+      // 매수 기회가 없는 경우
+      if (summary.turtleBuySignals === 0 && summary.qualifiedSuperstocks === 0) {
+        message += `\n\n⏸️ **오늘은 매수 신호가 없습니다**\n시장 상황을 계속 모니터링하겠습니다.`;
+      }
+      
+      return message;
+      
+    } catch (error) {
+      console.error('BUY 신호 메시지 포맷 실패:', error);
+      return `❌ 매수 신호 데이터 처리 중 오류가 발생했습니다: ${error.message}`;
+    }
+  }
+  
   // 간단한 테스트용 포맷터
   static formatTest(data) {
     return `🧪 **테스트 메시지**\n\n${JSON.stringify(data, null, 2)}`;
