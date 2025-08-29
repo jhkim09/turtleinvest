@@ -586,7 +586,43 @@ router.post('/make-analysis/buy', async (req, res) => {
         analysisType: 'buy_signals_analysis',
         market: 'KRX',
         apiVersion: '3.0'
-      }
+      },
+      slackMessage: SlackMessageFormatter.formatIntegratedAnalysis({
+        timestamp: new Date().toISOString(),
+        summary: {
+          turtleSignals: buySignals.length,
+          qualifiedSuperstocks: qualifiedSuperstocks.length,
+          overlappingStocks: buyOpportunities.length,
+          hasOverlap: buyOpportunities.length > 0
+        },
+        turtleTrading: {
+          signals: buySignals.map(signal => ({
+            symbol: signal.symbol,
+            name: signal.name,
+            signalType: signal.signalType,
+            currentPrice: signal.currentPrice,
+            action: signal.recommendedAction?.action || 'BUY',
+            reasoning: signal.recommendedAction?.reasoning || ''
+          }))
+        },
+        superstocks: {
+          qualifiedStocks: qualifiedSuperstocks.map(stock => ({
+            symbol: stock.symbol,
+            name: stock.name,
+            currentPrice: stock.currentPrice,
+            revenueGrowth3Y: stock.revenueGrowth3Y,
+            netIncomeGrowth3Y: stock.netIncomeGrowth3Y,
+            psr: stock.psr
+          }))
+        },
+        premiumOpportunities: buyOpportunities,
+        investmentSettings: {
+          budget: budget,
+          budgetDisplay: `${(budget/10000).toFixed(0)}만원`,
+          riskPerTrade: budget * 0.02,
+          riskDisplay: `${(budget * 0.02 / 10000).toFixed(0)}만원`
+        }
+      })
     };
     
     res.json(result);
@@ -702,7 +738,20 @@ router.post('/make-analysis/sell', async (req, res) => {
         analysisType: 'sell_signals_analysis',
         market: 'KRX',
         apiVersion: '3.0'
-      }
+      },
+      slackMessage: SlackMessageFormatter.formatSellSignals({
+        timestamp: new Date().toISOString(),
+        sellSignals: sellSignals,
+        accountSummary: accountData ? {
+          totalAsset: accountData.totalAsset,
+          cash: accountData.cash,
+          positionCount: accountData.positions.length
+        } : {
+          totalAsset: 0,
+          cash: 0,
+          positionCount: 0
+        }
+      })
     };
     
     res.json(result);
