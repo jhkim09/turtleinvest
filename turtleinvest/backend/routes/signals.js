@@ -23,7 +23,9 @@ router.get('/health', async (req, res) => {
       endpoints: {
         superstocksSearch: '/api/signals/superstocks-search',
         turtleAnalysis: '/api/signals/analyze',
-        integratedAnalysis: '/api/signals/make-analysis'
+        buySignals: '/api/signals/make-analysis/buy',
+        sellSignals: '/api/signals/make-analysis/sell',
+        legacyAnalysis: '/api/signals/make-analysis (deprecated)'
       }
     });
   } catch (error) {
@@ -395,8 +397,8 @@ router.post('/superstocks-search', async (req, res) => {
   }
 });
 
-// Make.com 통합 분석 API (터틀 + 슈퍼스톡스)
-router.post('/make-analysis', async (req, res) => {
+// Make.com 통합 분석 API (터틀 + 슈퍼스톡스) - BUY 신호만
+router.post('/make-analysis/buy', async (req, res) => {
   try {
     const { apiKey, symbols, investmentBudget } = req.body;
     
@@ -412,7 +414,7 @@ router.post('/make-analysis', async (req, res) => {
     
     // 투자 예산 설정 (기본값: 100만원)
     const budget = investmentBudget || 1000000;
-    console.log(`🔍 Make.com에서 통합 분석 요청 (터틀 + 슈퍼스톡스) | 투자예산: ${(budget/10000).toFixed(0)}만원`);
+    console.log(`🔍 Make.com에서 BUY 신호 분석 요청 | 투자예산: ${(budget/10000).toFixed(0)}만원`);
     
     // 터틀 분석 로그 초기화
     global.turtleAnalysisLogs = [];
@@ -515,198 +517,300 @@ router.post('/make-analysis', async (req, res) => {
       }
     });
     
-    // 안전한 응답 구조 생성
+    // BUY 신호만 필터링
+    const buySignals = turtleSignals.filter(s => s.signalType?.includes('BUY') || s.recommendedAction?.action === 'BUY');
     const qualifiedSuperstocks = superstocks.filter(s => s && s.meetsConditions) || [];
-    const totalSuperstocks = superstocks.filter(s => s !== null) || [];
+    
+    // BUY 신호와 슈퍼스톡스 겹치는 종목
+    const buyOpportunities = [];
+    buySignals.forEach(turtle => {
+      const superstock = superstocks.find(s => s.symbol === turtle.symbol);
+      if (superstock && superstock.meetsConditions) {
+        buyOpportunities.push({
+          symbol: turtle.symbol,
+          name: turtle.name,
+          turtleSignal: turtle.signalType,
+          superstocksScore: superstock.score,
+          currentPrice: turtle.currentPrice,
+          turtleAction: turtle.recommendedAction?.action || 'BUY',
+          superstocksData: {
+            revenueGrowth3Y: superstock.revenueGrowth3Y,
+            netIncomeGrowth3Y: superstock.netIncomeGrowth3Y,
+            psr: superstock.psr
+          },
+          isPremiumBuyOpportunity: true
+        });
+      }
+    });
     
     const result = {
       success: true,
       timestamp: new Date().toISOString(),
+      signalType: 'BUY',
       summary: {
-        turtleSignals: turtleSignals.length || 0,
+        turtleBuySignals: buySignals.length || 0,
         qualifiedSuperstocks: qualifiedSuperstocks.length || 0,
-        totalSuperstocksAnalyzed: totalSuperstocks.length || 0,
-        overlappingStocks: overlappingStocks.length || 0,
-        hasOverlap: overlappingStocks.length > 0,
-        analysisStatus: {
-          turtleSuccess: turtleSignals.length >= 0,
-          superstocksSuccess: totalSuperstocks.length >= 0
-        }
+        premiumBuyOpportunities: buyOpportunities.length || 0,
+        hasBuyOpportunity: buySignals.length > 0 || qualifiedSuperstocks.length > 0
       },
-      turtleTrading: {
-        totalSignals: turtleSignals.length,
-        buySignals: turtleSignals.filter(s => s.signalType?.includes('BUY')).length,
-        sellSignals: turtleSignals.filter(s => s.signalType?.includes('SELL')).length,
-        signals: turtleSignals.map(signal => ({
+      buySignals: {
+        turtle: buySignals.map(signal => ({
           symbol: signal.symbol,
           name: signal.name,
           signalType: signal.signalType,
           currentPrice: signal.currentPrice,
-          action: signal.recommendedAction?.action || 'HOLD',
+          action: signal.recommendedAction?.action || 'BUY',
           reasoning: signal.recommendedAction?.reasoning || '',
           breakoutPrice: signal.breakoutPrice || null,
-          highPrice20D: signal.highPrice20D || null,
-          lowPrice10D: signal.lowPrice10D || null
+          highPrice20D: signal.highPrice20D || null
         })),
-        analysisLogs: (global.turtleAnalysisLogs || []).slice(0, 5) // 처음 5개 종목 분석 로그
+        superstocks: qualifiedSuperstocks.map(stock => ({
+          symbol: stock.symbol,
+          name: stock.name,
+          currentPrice: stock.currentPrice,
+          revenueGrowth3Y: stock.revenueGrowth3Y,
+          netIncomeGrowth3Y: stock.netIncomeGrowth3Y,
+          psr: stock.psr,
+          score: stock.score
+        })),
+        premium: buyOpportunities
       },
-      superstocks: {
-        analysisMethod: 'HYBRID_CACHE_KIWOOM',
-        financialCandidates: 30, // 고정 (상위 30개 재무조건 만족)
-        successfullyAnalyzed: superstocks.length || 0,
-        qualifiedCount: superstocks.length || 0,
-        excellentStocks: superstocks.filter(s => s && s.score === 'EXCELLENT').length || 0,
-        goodStocks: superstocks.filter(s => s && s.score === 'GOOD').length || 0,
-        
-        // 조건 만족 주식들 (하이브리드 분석 결과)
-        qualifiedStocks: superstocks.map(stock => ({
-          symbol: stock.symbol,
-          name: stock.name,
-          currentPrice: stock.currentPrice,
-          revenueGrowth3Y: stock.revenueGrowth3Y,
-          netIncomeGrowth3Y: stock.netIncomeGrowth3Y,
-          psr: stock.psr,
-          score: stock.score,
-          dataSource: stock.dataSource
-        })),
-        
-        // 점수별 분류 (하이브리드 분석 결과)
-        excellentStocks: superstocks.filter(s => s.score === 'EXCELLENT').map(stock => ({
-          symbol: stock.symbol,
-          name: stock.name,
-          currentPrice: stock.currentPrice,
-          revenueGrowth3Y: stock.revenueGrowth3Y,
-          netIncomeGrowth3Y: stock.netIncomeGrowth3Y,
-          psr: stock.psr,
-          score: stock.score,
-          dataSource: stock.dataSource
-        })),
-        
-        goodStocks: superstocks.filter(s => s.score === 'GOOD').map(stock => ({
-          symbol: stock.symbol,
-          name: stock.name,
-          currentPrice: stock.currentPrice,
-          revenueGrowth3Y: stock.revenueGrowth3Y,
-          netIncomeGrowth3Y: stock.netIncomeGrowth3Y,
-          psr: stock.psr,
-          score: stock.score,
-          dataSource: stock.dataSource
-        })),
-        
-        // 전체 분석 결과 (처음 20개만)
-        allAnalyzedStocks: superstocks.slice(0, 20).map(stock => ({
-          symbol: stock.symbol,
-          name: stock.name,
-          currentPrice: stock.currentPrice,
-          revenueGrowth3Y: stock.revenueGrowth3Y,
-          netIncomeGrowth3Y: stock.netIncomeGrowth3Y,
-          psr: stock.psr,
-          score: stock.score,
-          meetsConditions: stock.meetsConditions,
-          dataSource: stock.dataSource || 'UNKNOWN'
-        }))
-      },
-      premiumOpportunities: overlappingStocks,
       investmentSettings: {
-        budget: budget,                    // 사용된 투자 예산
+        budget: budget,
         budgetDisplay: `${(budget/10000).toFixed(0)}만원`,
-        riskPerTrade: budget * 0.02,      // 종목당 리스크 (2%)
+        riskPerTrade: budget * 0.02,
         riskDisplay: `${(budget * 0.02 / 10000).toFixed(0)}만원`
       },
       metadata: {
         requestedBy: 'make.com',
-        analysisType: 'integrated_turtle_superstocks',
+        analysisType: 'buy_signals_analysis',
         market: 'KRX',
-        apiVersion: '2.0'
-      },
-      slackMessage: SlackMessageFormatter.formatIntegratedAnalysis({
-        timestamp: new Date().toISOString(),
-        summary: {
-          turtleSignals: turtleSignals.length,
-          qualifiedSuperstocks: superstocks.filter(s => s.meetsConditions).length,
-          overlappingStocks: overlappingStocks.length,
-          hasOverlap: overlappingStocks.length > 0
-        },
-        turtleTrading: {
-          signals: turtleSignals.map(signal => ({
-            symbol: signal.symbol,
-            name: signal.name,
-            signalType: signal.signalType,
-            currentPrice: signal.currentPrice,
-            action: signal.recommendedAction?.action || 'HOLD',
-            reasoning: signal.recommendedAction?.reasoning || ''
-          }))
-        },
-        superstocks: {
-          qualifiedStocks: superstocks.filter(s => s.meetsConditions).map(stock => ({
-            symbol: stock.symbol,
-            name: stock.name,
-            currentPrice: stock.currentPrice,
-            revenueGrowth3Y: stock.revenueGrowth3Y,
-            netIncomeGrowth3Y: stock.netIncomeGrowth3Y,
-            psr: stock.psr
-          }))
-        },
-        premiumOpportunities: overlappingStocks,
-        investmentSettings: {
-          budget: budget,
-          budgetDisplay: `${(budget/10000).toFixed(0)}만원`,
-          riskPerTrade: budget * 0.02,
-          riskDisplay: `${(budget * 0.02 / 10000).toFixed(0)}만원`
-        }
-      })
+        apiVersion: '3.0'
+      }
     };
     
     res.json(result);
     
   } catch (error) {
-    console.error('통합 분석 실패:', error);
+    console.error('BUY 신호 분석 실패:', error);
     
-    // 안전한 오류 응답 (Make.com이 파싱할 수 있도록)
     res.status(200).json({
       success: false,
-      error: 'INTEGRATED_ANALYSIS_FAILED',
+      error: 'BUY_ANALYSIS_FAILED',
       message: error.message || '알 수 없는 오류',
       timestamp: new Date().toISOString(),
+      signalType: 'BUY',
       summary: {
-        turtleSignals: 0,
+        turtleBuySignals: 0,
         qualifiedSuperstocks: 0,
-        totalSuperstocksAnalyzed: 0,
-        overlappingStocks: 0,
-        hasOverlap: false,
-        analysisStatus: {
-          turtleSuccess: false,
-          superstocksSuccess: false
-        }
+        premiumBuyOpportunities: 0,
+        hasBuyOpportunity: false
       },
-      turtleTrading: {
-        totalSignals: 0,
-        buySignals: 0,
-        sellSignals: 0,
-        signals: [],
-        analysisLogs: []
+      buySignals: {
+        turtle: [],
+        superstocks: [],
+        premium: []
       },
-      superstocks: {
-        totalAnalyzed: 0,
-        successfullyAnalyzed: 0,
-        qualifiedCount: 0,
-        excellentStocks: 0,
-        goodStocks: 0,
-        qualifiedStocks: []
-      },
-      overlappingStocks: [],
       metadata: {
-        analysisType: 'integrated_turtle_superstocks',
+        analysisType: 'buy_signals_analysis',
         market: 'KRX',
-        apiVersion: '2.0',
+        apiVersion: '3.0',
         errorOccurred: true
-      },
-      timestamp: new Date().toISOString()
+      }
     });
   }
 });
 
-// (개별 API 제거 - 통합 API만 사용)
+// Make.com SELL 신호 분석 API
+router.post('/make-analysis/sell', async (req, res) => {
+  try {
+    const { apiKey } = req.body;
+    
+    // API 키 검증
+    const validApiKey = process.env.MAKE_API_KEY || 'TtL_9K2m8X7nQ4pE6wR3vY5uI8oP1aSdF7gH9jK2mN5vB8xC3zE6rT9yU4iO7pL0';
+    if (!apiKey || apiKey !== validApiKey) {
+      return res.status(401).json({
+        success: false,
+        error: 'UNAUTHORIZED',
+        message: 'Invalid API key'
+      });
+    }
+    
+    console.log('🔍 Make.com에서 SELL 신호 분석 요청');
+    
+    // 1. 키움 API에서 보유 종목 조회
+    const KiwoomService = require('../services/kiwoomService');
+    let accountData = null;
+    let sellSignals = [];
+    
+    try {
+      accountData = await KiwoomService.getAccountBalance();
+      
+      if (accountData && accountData.positions && accountData.positions.length > 0) {
+        // 2. 보유 종목 각각에 대해 매도 신호 분석
+        for (const position of accountData.positions) {
+          try {
+            console.log(`📊 매도 신호 분석: ${position.symbol} (${position.name})`);
+            
+            // 터틀 분석으로 매도 신호 확인
+            const signal = await TurtleAnalyzer.analyzeStock(position.symbol, position.name);
+            
+            if (signal && signal.signalType?.includes('SELL')) {
+              sellSignals.push({
+                symbol: signal.symbol,
+                name: signal.name,
+                signalType: signal.signalType,
+                currentPrice: signal.currentPrice,
+                position: {
+                  quantity: position.quantity,
+                  avgPrice: position.avgPrice,
+                  unrealizedPL: position.unrealizedPL
+                },
+                action: signal.recommendedAction?.action || 'SELL',
+                reasoning: signal.recommendedAction?.reasoning || '',
+                breakoutPrice: signal.breakoutPrice || null,
+                lowPrice10D: signal.lowPrice10D || null
+              });
+            }
+            
+          } catch (error) {
+            console.error(`${position.symbol} 매도 분석 실패:`, error);
+          }
+        }
+      }
+    } catch (accountError) {
+      console.error('계좌 조회 실패:', accountError.message);
+    }
+    
+    const result = {
+      success: true,
+      timestamp: new Date().toISOString(),
+      signalType: 'SELL',
+      summary: {
+        totalPositions: accountData?.positions?.length || 0,
+        sellSignals: sellSignals.length,
+        hasSellSignal: sellSignals.length > 0
+      },
+      sellSignals: sellSignals,
+      accountInfo: accountData ? {
+        totalAsset: accountData.totalAsset,
+        cash: accountData.cash,
+        positionCount: accountData.positions.length
+      } : null,
+      metadata: {
+        requestedBy: 'make.com',
+        analysisType: 'sell_signals_analysis',
+        market: 'KRX',
+        apiVersion: '3.0'
+      }
+    };
+    
+    res.json(result);
+    
+  } catch (error) {
+    console.error('SELL 신호 분석 실패:', error);
+    
+    res.status(200).json({
+      success: false,
+      error: 'SELL_ANALYSIS_FAILED',
+      message: error.message || '알 수 없는 오류',
+      timestamp: new Date().toISOString(),
+      signalType: 'SELL',
+      summary: {
+        totalPositions: 0,
+        sellSignals: 0,
+        hasSellSignal: false
+      },
+      sellSignals: [],
+      accountInfo: null,
+      metadata: {
+        analysisType: 'sell_signals_analysis',
+        market: 'KRX',
+        apiVersion: '3.0',
+        errorOccurred: true
+      }
+    });
+  }
+});
+
+// 기존 통합 API - 호환성을 위해 BUY 신호로 리다이렉트
+router.post('/make-analysis', async (req, res) => {
+  try {
+    console.log('⚠️ 기존 /make-analysis 호출 감지 - BUY 신호 분석으로 처리');
+    
+    // BUY 신호 분석을 대신 실행
+    const { apiKey, symbols, investmentBudget } = req.body;
+    
+    // API 키 검증
+    const validApiKey = process.env.MAKE_API_KEY || 'TtL_9K2m8X7nQ4pE6wR3vY5uI8oP1aSdF7gH9jK2mN5vB8xC3zE6rT9yU4iO7pL0';
+    if (!apiKey || apiKey !== validApiKey) {
+      return res.status(401).json({
+        success: false,
+        error: 'UNAUTHORIZED',
+        message: 'Invalid API key'
+      });
+    }
+    
+    // 새로운 분리된 엔드포인트 안내와 함께 BUY 신호 반환
+    const budget = investmentBudget || 1000000;
+    console.log(`🔍 Make.com에서 레거시 통합 분석 요청 | 투자예산: ${(budget/10000).toFixed(0)}만원`);
+    
+    // 터틀 분석
+    global.turtleAnalysisLogs = [];
+    global.investmentBudget = budget;
+    
+    let turtleSignals = [];
+    try {
+      turtleSignals = await TurtleAnalyzer.analyzeMarket() || [];
+    } catch (error) {
+      turtleSignals = [];
+    }
+    
+    // BUY 신호만 필터링
+    const buySignals = turtleSignals.filter(s => s.signalType?.includes('BUY') || s.recommendedAction?.action === 'BUY');
+    
+    res.json({
+      success: true,
+      timestamp: new Date().toISOString(),
+      deprecationNotice: {
+        message: 'This endpoint is deprecated. Use /make-analysis/buy for buy signals and /make-analysis/sell for sell signals',
+        newEndpoints: {
+          buySignals: '/api/signals/make-analysis/buy',
+          sellSignals: '/api/signals/make-analysis/sell'
+        }
+      },
+      signalType: 'BUY_ONLY',
+      summary: {
+        turtleBuySignals: buySignals.length,
+        hasBuyOpportunity: buySignals.length > 0
+      },
+      buySignals: buySignals.map(signal => ({
+        symbol: signal.symbol,
+        name: signal.name,
+        signalType: signal.signalType,
+        currentPrice: signal.currentPrice,
+        action: signal.recommendedAction?.action || 'BUY',
+        reasoning: signal.recommendedAction?.reasoning || ''
+      })),
+      metadata: {
+        requestedBy: 'make.com',
+        analysisType: 'legacy_buy_only',
+        market: 'KRX',
+        apiVersion: '3.0_DEPRECATED'
+      }
+    });
+    
+  } catch (error) {
+    res.status(200).json({
+      success: false,
+      error: 'LEGACY_ANALYSIS_FAILED',
+      message: error.message,
+      deprecationNotice: {
+        message: 'This endpoint is deprecated. Use /make-analysis/buy for buy signals and /make-analysis/sell for sell signals'
+      }
+    });
+  }
+});
 
 // 상세 분석 결과 조회 API (디버깅용)
 router.get('/analysis-details', async (req, res) => {
