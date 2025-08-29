@@ -1523,9 +1523,11 @@ router.get('/portfolio-n-values', async (req, res) => {
         analysisType: 'portfolio_n_values',
         market: 'KRX',
         apiVersion: '1.0'
-      },
-      slackMessage: SlackMessageFormatter.formatPortfolioNValues(result)
+      }
     };
+    
+    // 슬랙 메시지 추가
+    result.slackMessage = SlackMessageFormatter.formatPortfolioNValues(result);
     
     console.log(`✅ 포트폴리오 N값 분석 완료: ${portfolioNValues.length}개 종목, 평균 N값: ${result.summary.averageNValue}원`);
     
