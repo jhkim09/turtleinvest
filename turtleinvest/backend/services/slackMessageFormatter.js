@@ -176,6 +176,77 @@ class SlackMessageFormatter {
     }
   }
   
+  // 포트폴리오 N값 분석 전용 포맷터
+  static formatPortfolioNValues(analysisResult) {
+    try {
+      const timestamp = new Date(analysisResult.timestamp).toLocaleDateString('ko-KR');
+      let message = `🐢 **포트폴리오 N값 분석** (${timestamp})\n\n`;
+      
+      // 보유 종목별 N값 정보
+      if (analysisResult.positions && analysisResult.positions.length > 0) {
+        message += `📊 **보유 종목 N값 (ATR) 현황**\n\n`;
+        
+        analysisResult.positions.forEach((position, index) => {
+          const profitLossEmoji = position.unrealizedPLPercent >= 0 ? '📈' : '📉';
+          const riskLevelEmoji = position.riskPercent > 5 ? '🚨' : position.riskPercent > 3 ? '⚠️' : '✅';
+          const nearStopLossEmoji = position.isNearStopLoss ? '🚨' : '🛡️';
+          
+          message += `${index + 1}. ${nearStopLossEmoji} **${position.name}** (${position.symbol})\n`;
+          message += `   • 현재가: ${position.currentPrice.toLocaleString()}원\n`;
+          message += `   • 매수가: ${position.avgPrice.toLocaleString()}원\n`;
+          message += `   • N값(ATR): ${position.nValue.toLocaleString()}원\n`;
+          message += `   • 터틀 손절가: ${position.stopLossPrice.toLocaleString()}원 (매수가 - 2N)\n`;
+          message += `   • 보유수량: ${position.quantity.toLocaleString()}주\n`;
+          message += `   ${profitLossEmoji} 손익: ${position.unrealizedPL.toLocaleString()}원 (${position.unrealizedPLPercent >= 0 ? '+' : ''}${position.unrealizedPLPercent}%)\n`;
+          message += `   ${riskLevelEmoji} 리스크: ${position.riskAmount.toLocaleString()}원 (${position.riskPercent}%)\n`;
+          
+          // 손절가 근접 경고
+          if (position.isNearStopLoss) {
+            message += `   🚨 **손절가 도달** - 즉시 매도 검토 필요\n`;
+          } else if (position.priceFromStopLoss !== null && position.priceFromStopLoss < position.nValue) {
+            message += `   ⚠️ 손절가까지 ${Math.round(position.priceFromStopLoss)}원 (1N 이내 위험)\n`;
+          }
+          
+          message += '\n';
+        });
+        
+        // 포트폴리오 전체 요약
+        const summary = analysisResult.summary;
+        message += `📈 **포트폴리오 리스크 요약**\n\n`;
+        message += `💰 총 시가: ${summary.totalMarketValue.toLocaleString()}원\n`;
+        message += `🎯 총 리스크: ${summary.totalRiskAmount.toLocaleString()}원 (${summary.portfolioRiskPercent}%)\n`;
+        message += `📊 평균 N값: ${summary.averageNValue.toLocaleString()}원\n`;
+        message += `📍 보유 종목: ${summary.totalPositions}개\n`;
+        
+        // 위험 경고
+        if (summary.nearStopLossCount > 0) {
+          message += `🚨 **손절 근접**: ${summary.nearStopLossCount}개 종목이 손절가에 근접\n`;
+        } else {
+          message += `🛡️ **안전 상태**: 모든 종목이 안전한 거리 유지\n`;
+        }
+        
+        // 리스크 레벨 평가
+        if (summary.portfolioRiskPercent > 8) {
+          message += `⚠️ **고위험**: 포트폴리오 리스크가 8% 초과\n`;
+        } else if (summary.portfolioRiskPercent > 5) {
+          message += `📊 **중간위험**: 포트폴리오 리스크 5-8%\n`;
+        } else {
+          message += `✅ **저위험**: 포트폴리오 리스크 5% 이하\n`;
+        }
+        
+      } else {
+        message += `📭 현재 보유 종목이 없습니다.\n\n`;
+        message += `🎯 새로운 터틀 매수 신호를 기다리고 있습니다.`;
+      }
+      
+      return message;
+      
+    } catch (error) {
+      console.error('포트폴리오 N값 메시지 포맷 실패:', error);
+      return `❌ 포트폴리오 N값 데이터 처리 중 오류가 발생했습니다: ${error.message}`;
+    }
+  }
+  
   // 간단한 테스트용 포맷터
   static formatTest(data) {
     return `🧪 **테스트 메시지**\n\n${JSON.stringify(data, null, 2)}`;
