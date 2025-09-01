@@ -94,8 +94,8 @@ class TurtleAnalyzer {
       const YahooFinanceService = require('./yahooFinanceService');
       const highLowData = await YahooFinanceService.get52WeekHighLow(symbol);
       
-      if (priceData.length < 20) {
-        console.log(`⚠️ ${symbol}: 일봉 데이터 부족 (${priceData.length}일)`);
+      if (!priceData || priceData.length < 20) {
+        console.log(`⚠️ ${symbol}: 실제 일봉 데이터 부족 (${priceData ? priceData.length : 0}일) - 시뮬레이션 데이터 제외됨`);
         return null;
       }
       
@@ -577,16 +577,80 @@ class TurtleAnalyzer {
     }
   }
   
-  // 가격 데이터 가져오기 (키움 API 연동)
+  // 가격 데이터 가져오기 (키움 API 연동) - 시뮬레이션 데이터 필터링
   static async getPriceData(symbol, days = 55) {
     try {
       // 키움 서비스에서 일봉 데이터 가져오기
       const data = await KiwoomService.getDailyData(symbol, days);
-      return data;
+      
+      // 시뮬레이션 데이터 검증 - 실제 데이터만 허용
+      if (data && data.length > 0) {
+        // 시뮬레이션 데이터 패턴 감지:
+        // 1. 매우 규칙적인 가격 패턴 (시뮬레이션 특징)
+        // 2. 날짜가 너무 완벽한 순서 (실제 시장은 휴일 제외)
+        const isSimulationData = this.detectSimulationData(data, symbol);
+        
+        if (isSimulationData) {
+          console.log(`⚠️ ${symbol}: 시뮬레이션 데이터 감지됨, 실제 데이터만 사용`);
+          return [];
+        }
+      }
+      
+      return data || [];
     } catch (error) {
       console.error(`${symbol} 가격 데이터 조회 실패:`, error);
       return [];
     }
+  }
+
+  // 시뮬레이션 데이터 감지 로직
+  static detectSimulationData(data, symbol) {
+    if (!data || data.length < 5) return false;
+    
+    // 1. 키움 시뮬레이션의 특정 심볼들 체크
+    const simulationSymbols = ['005930', '000660', '035420', '005380', '012330', '122870'];
+    if (simulationSymbols.includes(symbol)) {
+      // 가격이 시뮬레이션 기준가와 너무 일치하는지 체크
+      const simulationPrices = {
+        '005930': 72500,
+        '000660': 185000,
+        '035420': 195000,
+        '005380': 238500,
+        '012330': 250000,
+        '122870': 45000
+      };
+      
+      const expectedPrice = simulationPrices[symbol];
+      if (expectedPrice) {
+        const currentPrice = data[0].close;
+        const priceDeviation = Math.abs(currentPrice - expectedPrice) / expectedPrice;
+        if (priceDeviation < 0.05) { // 5% 이내면 시뮬레이션일 가능성 높음
+          return true;
+        }
+      }
+    }
+    
+    // 2. 데이터 패턴이 너무 인위적인지 체크
+    const prices = data.slice(0, 10).map(d => d.close);
+    const avgPrice = prices.reduce((a, b) => a + b, 0) / prices.length;
+    
+    // 변동성이 너무 일정한 경우 (실제 시장은 불규칙함)
+    const volatilities = [];
+    for (let i = 1; i < prices.length; i++) {
+      volatilities.push(Math.abs(prices[i] - prices[i-1]) / prices[i-1]);
+    }
+    
+    const avgVolatility = volatilities.reduce((a, b) => a + b, 0) / volatilities.length;
+    const volatilityStdDev = Math.sqrt(
+      volatilities.reduce((sum, v) => sum + Math.pow(v - avgVolatility, 2), 0) / volatilities.length
+    );
+    
+    // 변동성이 너무 일정하면 시뮬레이션 데이터
+    if (volatilityStdDev < avgVolatility * 0.3) {
+      return true;
+    }
+    
+    return false;
   }
   
   // 신호 저장
