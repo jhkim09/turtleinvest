@@ -436,14 +436,17 @@ router.post('/make-analysis/buy', async (req, res) => {
     try {
       console.log(`📊 하이브리드 슈퍼스톡스 분석 시작...`);
       
-      // 1. 캐시에서 재무조건 만족 종목 조회 (DART API 호출 없음)
+      // 1. 캐시에서 재무조건 만족 종목 조회 (실제 DART 데이터 우선)
       const financialCandidates = await FinancialData.find({
         dataYear: 2025,
-        dataSource: 'ESTIMATED',
+        dataSource: { $in: ['DART', 'ESTIMATED'] }, // DART 데이터 우선, 없으면 추정치
         revenueGrowth3Y: { $gte: 15 },
         netIncomeGrowth3Y: { $gte: 15 },
         revenue: { $gt: 100 }
-      }).sort({ revenueGrowth3Y: -1 }).limit(30); // 상위 30개
+      }).sort({ 
+        dataSource: 1, // DART가 먼저 오도록 (알파벳 순)
+        revenueGrowth3Y: -1 
+      }).limit(30); // 상위 30개
 
       console.log(`📋 재무조건 만족: ${financialCandidates.length}개 후보`);
 
@@ -482,7 +485,7 @@ router.post('/make-analysis/buy', async (req, res) => {
               netIncome: stock.netIncome,
               score: stock.revenueGrowth3Y >= 30 ? 'EXCELLENT' : 'GOOD',
               meetsConditions: true,
-              dataSource: 'HYBRID_CACHE_KIWOOM',
+              dataSource: stock.dataSource === 'DART' ? 'DART_REALTIME' : 'HYBRID_CACHE_KIWOOM',
               timestamp: new Date().toISOString()
             });
           }
@@ -786,14 +789,17 @@ router.post('/make-analysis', async (req, res) => {
     try {
       console.log(`📊 하이브리드 슈퍼스톡스 분석 시작...`);
       
-      // 1. 캐시에서 재무조건 만족 종목 조회 (DART API 호출 없음)
+      // 1. 캐시에서 재무조건 만족 종목 조회 (실제 DART 데이터 우선)
       const financialCandidates = await FinancialData.find({
         dataYear: 2025,
-        dataSource: 'ESTIMATED',
+        dataSource: { $in: ['DART', 'ESTIMATED'] }, // DART 데이터 우선, 없으면 추정치
         revenueGrowth3Y: { $gte: 15 },
         netIncomeGrowth3Y: { $gte: 15 },
         revenue: { $gt: 100 }
-      }).sort({ revenueGrowth3Y: -1 }).limit(30); // 상위 30개
+      }).sort({ 
+        dataSource: 1, // DART가 먼저 오도록 (알파벳 순)
+        revenueGrowth3Y: -1 
+      }).limit(30); // 상위 30개
 
       console.log(`📋 재무조건 만족: ${financialCandidates.length}개 후보`);
 
@@ -832,7 +838,7 @@ router.post('/make-analysis', async (req, res) => {
               netIncome: stock.netIncome,
               score: stock.revenueGrowth3Y >= 30 ? 'EXCELLENT' : 'GOOD',
               meetsConditions: true,
-              dataSource: 'HYBRID_CACHE_KIWOOM',
+              dataSource: stock.dataSource === 'DART' ? 'DART_REALTIME' : 'HYBRID_CACHE_KIWOOM',
               timestamp: new Date().toISOString()
             });
           }

@@ -29,7 +29,9 @@ class SlackMessageFormatter {
         // Top 5개만 표시
         const topStocks = analysisResult.superstocks.qualifiedStocks.slice(0, 5);
         topStocks.forEach((stock, index) => {
-          message += `${index + 1}. **${stock.name}** (${stock.symbol})\n`;
+          const dataSourceEmoji = stock.dataSource === 'DART_REALTIME' ? '📊' : '💡';
+          const dataSourceText = stock.dataSource === 'DART_REALTIME' ? 'DART' : 'EST';
+          message += `${index + 1}. **${stock.name}** (${stock.symbol}) ${dataSourceEmoji}${dataSourceText}\n`;
           message += `   • 현재가: ${stock.currentPrice.toLocaleString()}원\n`;
           message += `   • 매출성장: ${stock.revenueGrowth3Y.toFixed(1)}%\n`;
           message += `   • 순이익성장: ${stock.netIncomeGrowth3Y.toFixed(1)}%\n`;
@@ -128,7 +130,9 @@ class SlackMessageFormatter {
       if (buyAnalysisResult.buySignals.superstocks && buyAnalysisResult.buySignals.superstocks.length > 0) {
         message += `⭐ **슈퍼스톡 매수 후보**\n\n`;
         buyAnalysisResult.buySignals.superstocks.forEach((stock, index) => {
-          message += `${index + 1}. **${stock.name}** (${stock.symbol})\n`;
+          const dataSourceEmoji = stock.dataSource === 'DART_REALTIME' ? '📊' : '💡';
+          const dataSourceText = stock.dataSource === 'DART_REALTIME' ? 'DART' : 'EST';
+          message += `${index + 1}. **${stock.name}** (${stock.symbol}) ${dataSourceEmoji}${dataSourceText}\n`;
           message += `   • 현재가: ${stock.currentPrice.toLocaleString()}원\n`;
           message += `   • 매출성장: ${stock.revenueGrowth3Y.toFixed(1)}%\n`;
           message += `   • 순이익성장: ${stock.netIncomeGrowth3Y.toFixed(1)}%\n`;
