@@ -65,6 +65,19 @@ stockNameSchema.index({ market: 1, isActive: 1 });
 // 정적 메서드: 종목명 조회
 stockNameSchema.statics.getStockName = async function(stockCode) {
   try {
+    // 알려진 종목명 오류 수정 매핑
+    const correctedNames = {
+      '009150': '삼성전기',     // DB에 잘못 저장된 "엘포유" 수정
+      '196170': '알테오젠',     // DB에 잘못 저장된 "비티에스제2호사모투자" 수정
+      '042660': '한화오션',     // DB에 잘못 저장된 "뉴유라이프코리아" 수정
+    };
+    
+    // 수정이 필요한 종목이면 올바른 이름 반환
+    if (correctedNames[stockCode]) {
+      return correctedNames[stockCode];
+    }
+    
+    // 일반적인 DB 조회
     const stock = await this.findOne({ stockCode: stockCode, isActive: true });
     return stock ? stock.companyName : null;
   } catch (error) {
