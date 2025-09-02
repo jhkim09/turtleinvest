@@ -74,11 +74,43 @@ class TurtleAnalyzer {
       
       console.log(`📊 신호 중복 제거: ${signals.length}개 → ${uniqueSignals.length}개`);
       
-      // 4. 신호 저장
-      await this.saveSignals(uniqueSignals);
+      // 4. 데이터 부족한 신호 필터링 (리스크 관리 불가능한 신호 제외)
+      const validSignals = uniqueSignals.filter(signal => {
+        const recommendedAction = signal.recommendedAction;
+        
+        if (!recommendedAction) return true; // 액션이 없으면 일단 통과
+        
+        // 손절가가 "데이터 부족" 또는 NaN인 경우 제외
+        const stopLossPrice = recommendedAction.risk?.stopLossPrice;
+        if (!stopLossPrice || stopLossPrice === '데이터 부족' || stopLossPrice === 'N/A') {
+          console.log(`⚠️ ${signal.symbol}: 손절가 데이터 부족으로 제외 (${stopLossPrice})`);
+          return false;
+        }
+        
+        // 투자 금액이 "데이터 부족"인 경우 제외  
+        const investment = recommendedAction.investment?.actualAmount;
+        if (!investment || investment === '데이터 부족' || investment === 'NaN') {
+          console.log(`⚠️ ${signal.symbol}: 투자금액 데이터 부족으로 제외 (${investment})`);
+          return false;
+        }
+        
+        // ATR/N값이 "데이터 부족"인 경우 제외
+        const atr = recommendedAction.technical?.atr;
+        if (!atr || atr === '데이터 부족' || isNaN(atr)) {
+          console.log(`⚠️ ${signal.symbol}: ATR 데이터 부족으로 제외 (${atr})`);
+          return false;
+        }
+        
+        return true;
+      });
       
-      console.log(`✅ 분석 완료: ${uniqueSignals.length}개 신호 발견`);
-      return uniqueSignals;
+      console.log(`🔍 데이터 검증: ${uniqueSignals.length}개 → ${validSignals.length}개 (데이터 부족 신호 ${uniqueSignals.length - validSignals.length}개 제외)`);
+      
+      // 5. 검증된 신호만 저장
+      await this.saveSignals(validSignals);
+      
+      console.log(`✅ 분석 완료: ${validSignals.length}개 유효한 신호 발견`);
+      return validSignals;
       
     } catch (error) {
       console.error('❌ 시장 분석 실패:', error);
