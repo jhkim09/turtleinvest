@@ -89,15 +89,32 @@ stockNameSchema.statics.getStockName = async function(stockCode) {
 // 정적 메서드: 대량 종목명 조회
 stockNameSchema.statics.getBulkStockNames = async function(stockCodes) {
   try {
+    // 알려진 종목명 오류 수정 매핑 (getStockName과 동일)
+    const correctedNames = {
+      '009150': '삼성전기',     // DB에 잘못 저장된 "엘포유" 수정
+      '196170': '알테오젠',     // DB에 잘못 저장된 "비티에스제2호사모투자" 수정
+      '042660': '한화오션',     // DB에 잘못 저장된 "뉴유라이프코리아" 수정
+    };
+    
     const stocks = await this.find({ 
       stockCode: { $in: stockCodes }, 
       isActive: true 
     });
     
     const nameMap = new Map();
+    
+    // DB에서 조회된 종목들 처리
     stocks.forEach(stock => {
-      nameMap.set(stock.stockCode, stock.companyName);
+      const correctedName = correctedNames[stock.stockCode];
+      nameMap.set(stock.stockCode, correctedName || stock.companyName);
     });
+    
+    // DB에 없지만 수정 매핑에 있는 종목들 추가
+    for (const [code, name] of Object.entries(correctedNames)) {
+      if (stockCodes.includes(code) && !nameMap.has(code)) {
+        nameMap.set(code, name);
+      }
+    }
     
     return nameMap;
   } catch (error) {
