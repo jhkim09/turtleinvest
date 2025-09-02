@@ -101,6 +101,13 @@ class TurtleAnalyzer {
           return false;
         }
         
+        // 코넥스(KONEX) 종목 제외 - 코스피/코스닥만 분석
+        const konexStocks = ['216400']; // 인바이츠바이오코아 등 코넥스 종목
+        if (konexStocks.includes(signal.symbol)) {
+          console.log(`⚠️ ${signal.symbol}: 코넥스(KONEX) 종목으로 제외`);
+          return false;
+        }
+        
         return true;
       });
       
