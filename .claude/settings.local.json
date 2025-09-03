@@ -3,7 +3,9 @@
     "allow": [
       "Bash(node:*)",
       "Bash(PORT=6001 node server.js)",
-      "Bash(PORT=6002 node server.js)"
+      "Bash(PORT=6002 node server.js)",
+      "Bash(cp:*)",
+      "Bash(curl:*)"
     ],
     "additionalDirectories": [
       "C:\\c\\Users\\newsh\\test-project\\turtleinvest"

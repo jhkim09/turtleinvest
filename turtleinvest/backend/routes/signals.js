@@ -1434,8 +1434,14 @@ router.get('/portfolio-n-values', async (req, res) => {
           try {
             console.log(`📈 ${position.symbol} (${position.name}) N값 계산 중...`);
             
-            // 38일 가격 데이터 조회 (ATR 계산용)
-            const priceData = await TurtleAnalyzer.getPriceData(position.symbol, 25);
+            // 키움 서비스에서 직접 가격 데이터 조회 (시뮬레이션 데이터 사용 안함)
+            let priceData = null;
+            try {
+              priceData = await KiwoomService.getDailyData(position.symbol, 25);
+            } catch (priceError) {
+              console.error(`❌ ${position.symbol} 가격 조회 실패: ${priceError.message}`);
+              priceData = null;
+            }
             
             if (priceData && priceData.length >= 21) {
               const atr = TurtleAnalyzer.calculateATR(priceData.slice(0, 21));
@@ -1464,12 +1470,12 @@ router.get('/portfolio-n-values', async (req, res) => {
                 riskAmount: Math.round(riskAmount),        // 종목별 리스크 금액
                 riskPercent: position.avgPrice > 0 ? Math.round((twoN / position.avgPrice) * 10000) / 100 : 0, // 리스크 퍼센트
                 isNearStopLoss: position.currentPrice <= stopLossPrice, // 손절가 근접 여부
-                priceFromStopLoss: position.currentPrice - stopLossPrice // 손절가와의 거리
+                priceFromStopLoss: position.currentPrice - stopLossPrice, // 손절가와의 거리
+                dataStatus: 'REAL_DATA' // 실제 데이터 사용
               });
               
             } else {
-              // 가격 데이터 부족시 추정값 사용
-              const estimatedN = Math.round(position.currentPrice * 0.02); // 현재가의 2%로 추정
+              // 가격 조회 실패시 에러 메시지와 함께 빈 결과 반환하지 않고 에러 상태 표시
               portfolioNValues.push({
                 symbol: position.symbol,
                 name: position.name,
@@ -1480,19 +1486,41 @@ router.get('/portfolio-n-values', async (req, res) => {
                 unrealizedPL: position.unrealizedPL || 0,
                 unrealizedPLPercent: position.avgPrice > 0 ? 
                   Math.round(((position.currentPrice - position.avgPrice) / position.avgPrice) * 10000) / 100 : 0,
-                nValue: estimatedN,
-                twoN: estimatedN * 2,
-                stopLossPrice: Math.round(position.avgPrice - (estimatedN * 2)),
-                riskAmount: Math.round(position.quantity * estimatedN * 2),
-                riskPercent: position.avgPrice > 0 ? Math.round((estimatedN * 2 / position.avgPrice) * 10000) / 100 : 0,
+                nValue: null,
+                twoN: null,
+                stopLossPrice: null,
+                riskAmount: null,
+                riskPercent: null,
                 isNearStopLoss: false,
                 priceFromStopLoss: null,
-                dataStatus: 'ESTIMATED' // 추정값임을 표시
+                dataStatus: 'PRICE_DATA_UNAVAILABLE',
+                errorMessage: `${position.name} 가격 조회에 실패하여 N값을 계산할 수 없습니다`
               });
             }
             
           } catch (error) {
             console.error(`❌ ${position.symbol} N값 계산 실패:`, error.message);
+            // 에러 발생시도 결과에 포함하되 에러 상태 표시
+            portfolioNValues.push({
+              symbol: position.symbol,
+              name: position.name,
+              currentPrice: position.currentPrice,
+              avgPrice: position.avgPrice,
+              quantity: position.quantity,
+              marketValue: position.currentPrice * position.quantity,
+              unrealizedPL: position.unrealizedPL || 0,
+              unrealizedPLPercent: position.avgPrice > 0 ? 
+                Math.round(((position.currentPrice - position.avgPrice) / position.avgPrice) * 10000) / 100 : 0,
+              nValue: null,
+              twoN: null,
+              stopLossPrice: null,
+              riskAmount: null,
+              riskPercent: null,
+              isNearStopLoss: false,
+              priceFromStopLoss: null,
+              dataStatus: 'ERROR',
+              errorMessage: `${position.name} N값 계산 중 오류 발생: ${error.message}`
+            });
           }
         }
       }
