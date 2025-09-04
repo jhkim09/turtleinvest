@@ -191,18 +191,18 @@ class SlackMessageFormatter {
         message += `📊 **보유 종목 N값 (ATR) 현황**\n\n`;
         
         analysisResult.positions.forEach((position, index) => {
-          const profitLossEmoji = position.unrealizedPLPercent >= 0 ? '📈' : '📉';
-          const riskLevelEmoji = position.riskPercent > 5 ? '🚨' : position.riskPercent > 3 ? '⚠️' : '✅';
+          const profitLossEmoji = (position.unrealizedPLPercent || 0) >= 0 ? '📈' : '📉';
+          const riskLevelEmoji = (position.riskPercent || 0) > 5 ? '🚨' : (position.riskPercent || 0) > 3 ? '⚠️' : '✅';
           const nearStopLossEmoji = position.isNearStopLoss ? '🚨' : '🛡️';
           
-          message += `${index + 1}. ${nearStopLossEmoji} **${position.name}** (${position.symbol})\n`;
-          message += `   • 현재가: ${position.currentPrice.toLocaleString()}원\n`;
-          message += `   • 매수가: ${position.avgPrice.toLocaleString()}원\n`;
-          message += `   • N값(ATR): ${position.nValue.toLocaleString()}원\n`;
-          message += `   • 터틀 손절가: ${position.stopLossPrice.toLocaleString()}원 (매수가 - 2N)\n`;
-          message += `   • 보유수량: ${position.quantity.toLocaleString()}주\n`;
-          message += `   ${profitLossEmoji} 손익: ${position.unrealizedPL.toLocaleString()}원 (${position.unrealizedPLPercent >= 0 ? '+' : ''}${position.unrealizedPLPercent}%)\n`;
-          message += `   ${riskLevelEmoji} 리스크: ${position.riskAmount.toLocaleString()}원 (${position.riskPercent}%)\n`;
+          message += `${index + 1}. ${nearStopLossEmoji} **${position.name || 'N/A'}** (${position.symbol || 'N/A'})\n`;
+          message += `   • 현재가: ${(position.currentPrice || 0).toLocaleString()}원\n`;
+          message += `   • 매수가: ${(position.avgPrice || 0).toLocaleString()}원\n`;
+          message += `   • N값(ATR): ${(position.nValue || 0).toLocaleString()}원\n`;
+          message += `   • 터틀 손절가: ${(position.stopLossPrice || 0).toLocaleString()}원 (매수가 - 2N)\n`;
+          message += `   • 보유수량: ${(position.quantity || 0).toLocaleString()}주\n`;
+          message += `   ${profitLossEmoji} 손익: ${(position.unrealizedPL || 0).toLocaleString()}원 (${(position.unrealizedPLPercent || 0) >= 0 ? '+' : ''}${position.unrealizedPLPercent || 0}%)\n`;
+          message += `   ${riskLevelEmoji} 리스크: ${(position.riskAmount || 0).toLocaleString()}원 (${position.riskPercent || 0}%)\n`;
           
           // 손절가 근접 경고
           if (position.isNearStopLoss) {
@@ -215,24 +215,25 @@ class SlackMessageFormatter {
         });
         
         // 포트폴리오 전체 요약
-        const summary = analysisResult.summary;
+        const summary = analysisResult.summary || {};
         message += `📈 **포트폴리오 리스크 요약**\n\n`;
-        message += `💰 총 시가: ${summary.totalMarketValue.toLocaleString()}원\n`;
-        message += `🎯 총 리스크: ${summary.totalRiskAmount.toLocaleString()}원 (${summary.portfolioRiskPercent}%)\n`;
-        message += `📊 평균 N값: ${summary.averageNValue.toLocaleString()}원\n`;
-        message += `📍 보유 종목: ${summary.totalPositions}개\n`;
+        message += `💰 총 시가: ${(summary.totalMarketValue || 0).toLocaleString()}원\n`;
+        message += `🎯 총 리스크: ${(summary.totalRiskAmount || 0).toLocaleString()}원 (${summary.portfolioRiskPercent || 0}%)\n`;
+        message += `📊 평균 N값: ${(summary.averageNValue || 0).toLocaleString()}원\n`;
+        message += `📍 보유 종목: ${summary.totalPositions || 0}개\n`;
         
         // 위험 경고
-        if (summary.nearStopLossCount > 0) {
-          message += `🚨 **손절 근접**: ${summary.nearStopLossCount}개 종목이 손절가에 근접\n`;
+        if ((summary.nearStopLossCount || 0) > 0) {
+          message += `🚨 **손절 근접**: ${summary.nearStopLossCount || 0}개 종목이 손절가에 근접\n`;
         } else {
           message += `🛡️ **안전 상태**: 모든 종목이 안전한 거리 유지\n`;
         }
         
         // 리스크 레벨 평가
-        if (summary.portfolioRiskPercent > 8) {
+        const riskPercent = summary.portfolioRiskPercent || 0;
+        if (riskPercent > 8) {
           message += `⚠️ **고위험**: 포트폴리오 리스크가 8% 초과\n`;
-        } else if (summary.portfolioRiskPercent > 5) {
+        } else if (riskPercent > 5) {
           message += `📊 **중간위험**: 포트폴리오 리스크 5-8%\n`;
         } else {
           message += `✅ **저위험**: 포트폴리오 리스크 5% 이하\n`;
