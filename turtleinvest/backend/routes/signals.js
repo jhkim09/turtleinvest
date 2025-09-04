@@ -1445,7 +1445,8 @@ router.get('/portfolio-n-values', async (req, res) => {
             
             if (priceData && priceData.length >= 21) {
               const atr = TurtleAnalyzer.calculateATR(priceData.slice(0, 21));
-              const nValue = Math.round(atr);
+              // ATR이 null인 경우 fallback 값 사용 (현재가의 2%)
+              const nValue = atr ? Math.round(atr) : Math.round(position.currentPrice * 0.02);
               const twoN = nValue * 2;
               const stopLossPrice = position.avgPrice - twoN;
               const riskAmount = position.quantity * twoN;
@@ -1475,7 +1476,12 @@ router.get('/portfolio-n-values', async (req, res) => {
               });
               
             } else {
-              // 가격 조회 실패시 에러 메시지와 함께 빈 결과 반환하지 않고 에러 상태 표시
+              // 가격 조회 실패시 fallback N값 사용 (현재가의 2%)
+              const fallbackNValue = Math.round(position.currentPrice * 0.02);
+              const fallbackTwoN = fallbackNValue * 2;
+              const fallbackStopLoss = position.avgPrice - fallbackTwoN;
+              const fallbackRiskAmount = position.quantity * fallbackTwoN;
+              
               portfolioNValues.push({
                 symbol: position.symbol,
                 name: position.name,
@@ -1486,21 +1492,26 @@ router.get('/portfolio-n-values', async (req, res) => {
                 unrealizedPL: position.unrealizedPL || 0,
                 unrealizedPLPercent: position.avgPrice > 0 ? 
                   Math.round(((position.currentPrice - position.avgPrice) / position.avgPrice) * 10000) / 100 : 0,
-                nValue: null,
-                twoN: null,
-                stopLossPrice: null,
-                riskAmount: null,
-                riskPercent: null,
-                isNearStopLoss: false,
-                priceFromStopLoss: null,
-                dataStatus: 'PRICE_DATA_UNAVAILABLE',
-                errorMessage: `${position.name} 가격 조회에 실패하여 N값을 계산할 수 없습니다`
+                nValue: fallbackNValue,
+                twoN: fallbackTwoN,
+                stopLossPrice: Math.round(fallbackStopLoss),
+                riskAmount: Math.round(fallbackRiskAmount),
+                riskPercent: position.avgPrice > 0 ? Math.round((fallbackTwoN / position.avgPrice) * 10000) / 100 : 0,
+                isNearStopLoss: position.currentPrice <= fallbackStopLoss,
+                priceFromStopLoss: position.currentPrice - fallbackStopLoss,
+                dataStatus: 'FALLBACK_USED',
+                errorMessage: `${position.name} 가격 조회 실패로 추정 N값(${fallbackNValue}원) 사용`
               });
             }
             
           } catch (error) {
             console.error(`❌ ${position.symbol} N값 계산 실패:`, error.message);
-            // 에러 발생시도 결과에 포함하되 에러 상태 표시
+            // 에러 발생시에도 fallback N값 사용 (현재가의 2%)
+            const fallbackNValue = Math.round(position.currentPrice * 0.02);
+            const fallbackTwoN = fallbackNValue * 2;
+            const fallbackStopLoss = position.avgPrice - fallbackTwoN;
+            const fallbackRiskAmount = position.quantity * fallbackTwoN;
+            
             portfolioNValues.push({
               symbol: position.symbol,
               name: position.name,
@@ -1511,15 +1522,15 @@ router.get('/portfolio-n-values', async (req, res) => {
               unrealizedPL: position.unrealizedPL || 0,
               unrealizedPLPercent: position.avgPrice > 0 ? 
                 Math.round(((position.currentPrice - position.avgPrice) / position.avgPrice) * 10000) / 100 : 0,
-              nValue: null,
-              twoN: null,
-              stopLossPrice: null,
-              riskAmount: null,
-              riskPercent: null,
-              isNearStopLoss: false,
-              priceFromStopLoss: null,
-              dataStatus: 'ERROR',
-              errorMessage: `${position.name} N값 계산 중 오류 발생: ${error.message}`
+              nValue: fallbackNValue,
+              twoN: fallbackTwoN,
+              stopLossPrice: Math.round(fallbackStopLoss),
+              riskAmount: Math.round(fallbackRiskAmount),
+              riskPercent: position.avgPrice > 0 ? Math.round((fallbackTwoN / position.avgPrice) * 10000) / 100 : 0,
+              isNearStopLoss: position.currentPrice <= fallbackStopLoss,
+              priceFromStopLoss: position.currentPrice - fallbackStopLoss,
+              dataStatus: 'ERROR_FALLBACK_USED', 
+              errorMessage: `${position.name} N값 계산 오류로 추정 N값(${fallbackNValue}원) 사용: ${error.message}`
             });
           }
         }
