@@ -455,25 +455,8 @@ class KiwoomService {
         );
         
         if (!authenticated) {
-          console.log('📊 인증 실패 - YG엔터 포함 시뮬레이션 데이터 반환');
-          return {
-            cash: 45000000, // 4천5백만원 현금
-            totalAsset: 50000000, // 5천만원 총자산
-            positions: [
-              {
-                symbol: '122870',
-                name: '와이지엔터테인먼트',
-                quantity: 1,
-                avgPrice: 45000, // 실제 매수가로 추정
-                currentPrice: 45000,
-                unrealizedPL: 0,
-                totalValue: 45000,
-                profitRate: 0,
-                entryDate: new Date().toISOString().split('T')[0],
-                entrySignal: 'TURTLE_BUY'
-              }
-            ]
-          };
+          console.log('❌ 키움 API 인증 실패');
+          throw new Error('키움 API 연결에 실패했습니다. API 키를 확인하고 다시 시도해주세요.');
         }
       }
       
@@ -545,26 +528,9 @@ class KiwoomService {
         console.error('📋 에러 응답:', error.response.status, error.response.data);
       }
       
-      // 실패시 시뮬레이션 데이터 반환 (기존 매수한 종목들 포함)
-      console.log('📊 키움 API 오류 - YG엔터 포함 시뮬레이션 데이터 반환');
-      return {
-        cash: 45000000, // 4천5백만원 현금
-        totalAsset: 50000000, // 5천만원 총자산
-        positions: [
-          {
-            symbol: '122870',
-            name: '와이지엔터테인먼트',
-            quantity: 1,
-            avgPrice: 45000, // 실제 매수가로 추정
-            currentPrice: 45000,
-            unrealizedPL: 0,
-            totalValue: 45000,
-            profitRate: 0,
-            entryDate: new Date().toISOString().split('T')[0],
-            entrySignal: 'TURTLE_BUY'
-          }
-        ]
-      };
+      // API 오류시 에러 발생
+      console.log('❌ 키움 API 호출 오류:', error.message);
+      throw new Error(`키움 API 호출에 실패했습니다: ${error.message}`);
     }
   }
   

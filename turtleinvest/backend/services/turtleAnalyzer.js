@@ -646,28 +646,9 @@ class TurtleAnalyzer {
   static detectSimulationData(data, symbol) {
     if (!data || data.length < 5) return false;
     
-    // 1. 키움 시뮬레이션의 특정 심볼들 체크
-    const simulationSymbols = ['005930', '000660', '035420', '005380', '012330', '122870'];
-    if (simulationSymbols.includes(symbol)) {
-      // 가격이 시뮬레이션 기준가와 너무 일치하는지 체크
-      const simulationPrices = {
-        '005930': 72500,
-        '000660': 185000,
-        '035420': 195000,
-        '005380': 238500,
-        '012330': 250000,
-        '122870': 45000
-      };
-      
-      const expectedPrice = simulationPrices[symbol];
-      if (expectedPrice) {
-        const currentPrice = data[0].close;
-        const priceDeviation = Math.abs(currentPrice - expectedPrice) / expectedPrice;
-        if (priceDeviation < 0.05) { // 5% 이내면 시뮬레이션일 가능성 높음
-          return true;
-        }
-      }
-    }
+    // 키움 API가 실제로 연결된 상황에서는 시뮬레이션 데이터 감지를 비활성화
+    // 실제 거래 데이터를 시뮬레이션으로 잘못 판단하는 것을 방지
+    return false;
     
     // 2. 데이터 패턴이 너무 인위적인지 체크
     const prices = data.slice(0, 10).map(d => d.close);
