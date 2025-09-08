@@ -413,14 +413,26 @@ class KiwoomService {
           console.log(`✅ 키움 API: ${symbol} 일봉 데이터 조회 성공`);
           const chartData = response.data.chart_data || [];
           
+          // 디버깅: 첫 번째 데이터 구조 확인
+          if (chartData.length > 0) {
+            console.log(`🔍 ${symbol} 키움 API 첫 번째 데이터:`, JSON.stringify(chartData[0], null, 2));
+          }
+          
           const dailyData = chartData.slice(0, days).map(item => ({
             date: item.dt,
-            open: parseInt(item.op_pric || '0'),
-            high: parseInt(item.hg_pric || '0'),
-            low: parseInt(item.lw_pric || '0'),
-            close: parseInt(item.cls_pric || '0'),
-            volume: parseInt(item.tr_vol || '0')
-          }));
+            open: parseInt(item.op_pric || item.open_price || '0'),
+            high: parseInt(item.hg_pric || item.high_price || '0'),
+            low: parseInt(item.lw_pric || item.low_price || '0'),
+            close: parseInt(item.cls_pric || item.close_price || '0'),
+            volume: parseInt(item.tr_vol || item.volume || '0')
+          })).filter(item => item.close > 0); // 유효하지 않은 데이터 필터링
+          
+          console.log(`📊 ${symbol} 키움 API 파싱 결과: ${dailyData.length}개 유효 데이터, 최근가 ${dailyData[0]?.close}원`);
+          
+          if (dailyData.length === 0) {
+            console.log(`❌ ${symbol} 키움 API 데이터 파싱 실패 - 모든 가격이 0`);
+            throw new Error('키움 API 데이터 파싱 실패');
+          }
           
           return dailyData.reverse();
         }
