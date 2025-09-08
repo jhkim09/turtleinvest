@@ -256,6 +256,47 @@ class SlackMessageFormatter {
   static formatTest(data) {
     return `🧪 **테스트 메시지**\n\n${JSON.stringify(data, null, 2)}`;
   }
+  
+  // 데이터 조회 실패 메시지 포매터
+  static formatDataFailure(type, error) {
+    try {
+      const timestamp = new Date().toLocaleDateString('ko-KR', {
+        year: 'numeric',
+        month: 'long', 
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      
+      let message = `❌ **데이터 조회 실패** (${timestamp})\n\n`;
+      
+      if (type === 'PORTFOLIO_N_VALUES') {
+        message += `📊 **포트폴리오 N값 분석 실패**\n\n`;
+        message += `• 계좌 데이터 또는 가격 정보를 조회할 수 없습니다\n`;
+        message += `• 키움 API 연결 상태를 확인해주세요\n`;
+        message += `• 시뮬레이션 데이터는 사용하지 않습니다\n\n`;
+      } else if (type === 'SELL_ANALYSIS') {
+        message += `📉 **매도 신호 분석 실패**\n\n`;
+        message += `• 보유 종목 데이터를 조회할 수 없습니다\n`;
+        message += `• 키움 API 연결 상태를 확인해주세요\n`;
+        message += `• 실제 계좌 데이터가 필요합니다\n\n`;
+      }
+      
+      message += `**오류 상세:**\n`;
+      message += `\`${error}\`\n\n`;
+      message += `🔧 **해결 방법:**\n`;
+      message += `1. 키움 API 연결 상태 확인\n`;
+      message += `2. API 키 유효성 검증\n`;
+      message += `3. 시장 시간 확인 (09:00-15:30)\n`;
+      message += `4. 네트워크 연결 상태 점검\n\n`;
+      message += `*재시도는 몇 분 후에 해주세요.*`;
+      
+      return message;
+    } catch (formatError) {
+      console.error('데이터 실패 메시지 포맷 실패:', formatError);
+      return `❌ 데이터 조회에 실패했습니다: ${error}`;
+    }
+  }
 }
 
 module.exports = SlackMessageFormatter;

@@ -685,12 +685,37 @@ router.post('/make-analysis/sell', async (req, res) => {
       }
     } catch (accountError) {
       console.error('계좌 조회 실패:', accountError.message);
+      
+      // 슬랙 메시지 생성 및 전송
+      const slackMessage = SlackMessageFormatter.formatDataFailure('SELL_ANALYSIS', accountError.message);
+      
+      // Make.com webhook으로 슬랙 전송 시도
+      try {
+        const axios = require('axios');
+        const webhookUrl = process.env.MAKE_WEBHOOK_URL_TURTLE_NOTIFICATION;
+        if (webhookUrl) {
+          await axios.post(webhookUrl, {
+            type: 'ERROR_NOTIFICATION',
+            title: '매도 신호 분석 실패',
+            message: slackMessage,
+            timestamp: new Date().toISOString(),
+            error: accountError.message
+          });
+          console.log('📤 슬랙 알림 전송 완료');
+        } else {
+          console.log('⚠️ Make.com webhook URL 미설정, 슬랙 전송 생략');
+        }
+      } catch (slackError) {
+        console.error('❌ 슬랙 알림 전송 실패:', slackError.message);
+      }
+      
       return res.status(500).json({
         success: false,
         error: 'ACCOUNT_DATA_UNAVAILABLE',
-        message: '계좌 데이터를 조회할 수 없습니다. 시뮬레이션 데이터는 사용하지 않습니다.',
+        message: '계좌 데이터를 조회할 수 없습니다. 슬랙으로 상세 내용을 전송했습니다.',
         timestamp: new Date().toISOString(),
-        details: accountError.message
+        details: accountError.message,
+        slackMessage: slackMessage
       });
     }
     
@@ -735,13 +760,37 @@ router.post('/make-analysis/sell', async (req, res) => {
   } catch (error) {
     console.error('SELL 신호 분석 실패:', error);
     
+    // 슬랙 메시지 생성 및 전송
+    const slackMessage = SlackMessageFormatter.formatDataFailure('SELL_ANALYSIS', error.message);
+    
+    // Make.com webhook으로 슬랙 전송 시도
+    try {
+      const axios = require('axios');
+      const webhookUrl = process.env.MAKE_WEBHOOK_URL_TURTLE_NOTIFICATION;
+      if (webhookUrl) {
+        await axios.post(webhookUrl, {
+          type: 'ERROR_NOTIFICATION',
+          title: '매도 신호 분석 실패',
+          message: slackMessage,
+          timestamp: new Date().toISOString(),
+          error: error.message
+        });
+        console.log('📤 슬랙 알림 전송 완료');
+      } else {
+        console.log('⚠️ Make.com webhook URL 미설정, 슬랙 전송 생략');
+      }
+    } catch (slackError) {
+      console.error('❌ 슬랙 알림 전송 실패:', slackError.message);
+    }
+    
     res.status(500).json({
       success: false,
       error: 'SELL_ANALYSIS_FAILED',
-      message: error.message || '데이터 조회에 실패했습니다. 시뮬레이션 데이터는 사용하지 않습니다.',
+      message: error.message || '데이터 조회에 실패했습니다. 슬랙으로 상세 내용을 전송했습니다.',
       timestamp: new Date().toISOString(),
       signalType: 'SELL',
-      details: '실제 계좌 데이터를 조회할 수 없어 분석을 중단했습니다.'
+      details: '실제 계좌 데이터를 조회할 수 없어 분석을 중단했습니다.',
+      slackMessage: slackMessage
     });
   }
 });
@@ -1305,12 +1354,36 @@ router.post('/sell-analysis', async (req, res) => {
     const accountData = await KiwoomService.getAccountBalance();
     
     if (!accountData || !accountData.positions || accountData.positions.length === 0) {
+      // 슬랙 메시지 생성 및 전송
+      const slackMessage = SlackMessageFormatter.formatDataFailure('SELL_ANALYSIS', '보유 종목이 없거나 조회할 수 없습니다.');
+      
+      // Make.com webhook으로 슬랙 전송 시도
+      try {
+        const axios = require('axios');
+        const webhookUrl = process.env.MAKE_WEBHOOK_URL_TURTLE_NOTIFICATION;
+        if (webhookUrl) {
+          await axios.post(webhookUrl, {
+            type: 'ERROR_NOTIFICATION',
+            title: '매도 신호 분석 실패 - 보유 종목 없음',
+            message: slackMessage,
+            timestamp: new Date().toISOString(),
+            error: '보유 종목 데이터 없음'
+          });
+          console.log('📤 슬랙 알림 전송 완료');
+        } else {
+          console.log('⚠️ Make.com webhook URL 미설정, 슬랙 전송 생략');
+        }
+      } catch (slackError) {
+        console.error('❌ 슬랙 알림 전송 실패:', slackError.message);
+      }
+      
       return res.status(404).json({
         success: false,
         error: 'NO_POSITIONS_FOUND',
-        message: '보유 종목 데이터를 조회할 수 없거나 보유 종목이 없습니다.',
+        message: '보유 종목 데이터를 조회할 수 없거나 보유 종목이 없습니다. 슬랙으로 상세 내용을 전송했습니다.',
         timestamp: new Date().toISOString(),
-        details: '실제 계좌 데이터가 필요합니다.'
+        details: '실제 계좌 데이터가 필요합니다.',
+        slackMessage: slackMessage
       });
     }
     
@@ -1389,12 +1462,37 @@ router.post('/sell-analysis', async (req, res) => {
     
   } catch (error) {
     console.error('매도 신호 분석 실패:', error);
+    
+    // 슬랙 메시지 생성 및 전송
+    const slackMessage = SlackMessageFormatter.formatDataFailure('SELL_ANALYSIS', error.message);
+    
+    // Make.com webhook으로 슬랙 전송 시도
+    try {
+      const axios = require('axios');
+      const webhookUrl = process.env.MAKE_WEBHOOK_URL_TURTLE_NOTIFICATION;
+      if (webhookUrl) {
+        await axios.post(webhookUrl, {
+          type: 'ERROR_NOTIFICATION',
+          title: '매도 신호 분석 실패',
+          message: slackMessage,
+          timestamp: new Date().toISOString(),
+          error: error.message
+        });
+        console.log('📤 슬랙 알림 전송 완료');
+      } else {
+        console.log('⚠️ Make.com webhook URL 미설정, 슬랙 전송 생략');
+      }
+    } catch (slackError) {
+      console.error('❌ 슬랙 알림 전송 실패:', slackError.message);
+    }
+    
     res.status(500).json({
       success: false,
       error: 'SELL_ANALYSIS_FAILED',
-      message: error.message || '매도 신호 분석 중 데이터 조회 실패했습니다. 시뮬레이션 데이터는 사용하지 않습니다.',
+      message: error.message || '매도 신호 분석 중 데이터 조회 실패했습니다. 슬랙으로 상세 내용을 전송했습니다.',
       timestamp: new Date().toISOString(),
-      details: '실제 계좌 및 시장 데이터를 조회할 수 없어 분석을 중단했습니다.'
+      details: '실제 계좌 및 시장 데이터를 조회할 수 없어 분석을 중단했습니다.',
+      slackMessage: slackMessage
     });
   }
 });
@@ -1489,12 +1587,37 @@ router.get('/portfolio-n-values', async (req, res) => {
       }
     } catch (accountError) {
       console.error('❌ 계좌 조회 실패:', accountError.message);
+      
+      // 슬랙 메시지 생성 및 전송
+      const slackMessage = SlackMessageFormatter.formatDataFailure('PORTFOLIO_N_VALUES', accountError.message);
+      
+      // Make.com webhook으로 슬랙 전송 시도
+      try {
+        const axios = require('axios');
+        const webhookUrl = process.env.MAKE_WEBHOOK_URL_TURTLE_NOTIFICATION;
+        if (webhookUrl) {
+          await axios.post(webhookUrl, {
+            type: 'ERROR_NOTIFICATION',
+            title: '포트폴리오 N값 분석 실패',
+            message: slackMessage,
+            timestamp: new Date().toISOString(),
+            error: accountError.message
+          });
+          console.log('📤 슬랙 알림 전송 완료');
+        } else {
+          console.log('⚠️ Make.com webhook URL 미설정, 슬랙 전송 생략');
+        }
+      } catch (slackError) {
+        console.error('❌ 슬랙 알림 전송 실패:', slackError.message);
+      }
+      
       return res.status(500).json({
         success: false,
         error: 'PORTFOLIO_DATA_UNAVAILABLE',
-        message: '계좌 데이터 또는 가격 정보를 조회할 수 없습니다. 시뮬레이션 데이터는 사용하지 않습니다.',
+        message: '계좌 데이터 또는 가격 정보를 조회할 수 없습니다. 슬랙으로 상세 내용을 전송했습니다.',
         timestamp: new Date().toISOString(),
-        details: accountError.message
+        details: accountError.message,
+        slackMessage: slackMessage
       });
     }
     
@@ -1539,12 +1662,37 @@ router.get('/portfolio-n-values', async (req, res) => {
     
   } catch (error) {
     console.error('❌ 포트폴리오 N값 분석 실패:', error);
+    
+    // 슬랙 메시지 생성 및 전송
+    const slackMessage = SlackMessageFormatter.formatDataFailure('PORTFOLIO_N_VALUES', error.message);
+    
+    // Make.com webhook으로 슬랙 전송 시도
+    try {
+      const axios = require('axios');
+      const webhookUrl = process.env.MAKE_WEBHOOK_URL_TURTLE_NOTIFICATION;
+      if (webhookUrl) {
+        await axios.post(webhookUrl, {
+          type: 'ERROR_NOTIFICATION',
+          title: '포트폴리오 N값 분석 실패',
+          message: slackMessage,
+          timestamp: new Date().toISOString(),
+          error: error.message
+        });
+        console.log('📤 슬랙 알림 전송 완료');
+      } else {
+        console.log('⚠️ Make.com webhook URL 미설정, 슬랙 전송 생략');
+      }
+    } catch (slackError) {
+      console.error('❌ 슬랙 알림 전송 실패:', slackError.message);
+    }
+    
     res.status(500).json({
       success: false,
       error: 'PORTFOLIO_N_VALUES_FAILED',
-      message: error.message || '포트폴리오 데이터를 조회할 수 없습니다. 시뮬레이션 데이터는 사용하지 않습니다.',
+      message: error.message || '포트폴리오 데이터를 조회할 수 없습니다. 슬랙으로 상세 내용을 전송했습니다.',
       timestamp: new Date().toISOString(),
-      details: '실제 계좌 및 가격 데이터를 조회할 수 없어 N값 계산을 중단했습니다.'
+      details: '실제 계좌 및 가격 데이터를 조회할 수 없어 N값 계산을 중단했습니다.',
+      slackMessage: slackMessage
     });
   }
 });
