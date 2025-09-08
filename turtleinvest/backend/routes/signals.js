@@ -685,6 +685,13 @@ router.post('/make-analysis/sell', async (req, res) => {
       }
     } catch (accountError) {
       console.error('계좌 조회 실패:', accountError.message);
+      return res.status(500).json({
+        success: false,
+        error: 'ACCOUNT_DATA_UNAVAILABLE',
+        message: '계좌 데이터를 조회할 수 없습니다. 시뮬레이션 데이터는 사용하지 않습니다.',
+        timestamp: new Date().toISOString(),
+        details: accountError.message
+      });
     }
     
     const result = {
@@ -728,25 +735,13 @@ router.post('/make-analysis/sell', async (req, res) => {
   } catch (error) {
     console.error('SELL 신호 분석 실패:', error);
     
-    res.status(200).json({
+    res.status(500).json({
       success: false,
       error: 'SELL_ANALYSIS_FAILED',
-      message: error.message || '알 수 없는 오류',
+      message: error.message || '데이터 조회에 실패했습니다. 시뮬레이션 데이터는 사용하지 않습니다.',
       timestamp: new Date().toISOString(),
       signalType: 'SELL',
-      summary: {
-        totalPositions: 0,
-        sellSignals: 0,
-        hasSellSignal: false
-      },
-      sellSignals: [],
-      accountInfo: null,
-      metadata: {
-        analysisType: 'sell_signals_analysis',
-        market: 'KRX',
-        apiVersion: '3.0',
-        errorOccurred: true
-      }
+      details: '실제 계좌 데이터를 조회할 수 없어 분석을 중단했습니다.'
     });
   }
 });
@@ -1310,12 +1305,12 @@ router.post('/sell-analysis', async (req, res) => {
     const accountData = await KiwoomService.getAccountBalance();
     
     if (!accountData || !accountData.positions || accountData.positions.length === 0) {
-      return res.json({
-        success: true,
-        message: '보유 종목이 없습니다',
-        sellSignals: [],
-        positions: [],
-        timestamp: new Date().toISOString()
+      return res.status(404).json({
+        success: false,
+        error: 'NO_POSITIONS_FOUND',
+        message: '보유 종목 데이터를 조회할 수 없거나 보유 종목이 없습니다.',
+        timestamp: new Date().toISOString(),
+        details: '실제 계좌 데이터가 필요합니다.'
       });
     }
     
@@ -1397,8 +1392,9 @@ router.post('/sell-analysis', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'SELL_ANALYSIS_FAILED',
-      message: error.message,
-      timestamp: new Date().toISOString()
+      message: error.message || '매도 신호 분석 중 데이터 조회 실패했습니다. 시뮬레이션 데이터는 사용하지 않습니다.',
+      timestamp: new Date().toISOString(),
+      details: '실제 계좌 및 시장 데이터를 조회할 수 없어 분석을 중단했습니다.'
     });
   }
 });
@@ -1445,8 +1441,11 @@ router.get('/portfolio-n-values', async (req, res) => {
             
             if (priceData && priceData.length >= 21) {
               const atr = TurtleAnalyzer.calculateATR(priceData.slice(0, 21));
-              // ATR이 null인 경우 fallback 값 사용 (현재가의 2%)
-              const nValue = atr ? Math.round(atr) : Math.round(position.currentPrice * 0.02);
+              // ATR이 null인 경우 에러 반환, 시뮬레이션 값 사용 안함
+              if (!atr || atr <= 0) {
+                throw new Error(`${position.name} (${position.symbol}) ATR 계산 결과가 유효하지 않습니다.`);
+              }
+              const nValue = Math.round(atr);
               const twoN = nValue * 2;
               const stopLossPrice = position.avgPrice - twoN;
               const riskAmount = position.quantity * twoN;
@@ -1476,67 +1475,27 @@ router.get('/portfolio-n-values', async (req, res) => {
               });
               
             } else {
-              // 가격 조회 실패시 fallback N값 사용 (현재가의 2%)
-              const fallbackNValue = Math.round(position.currentPrice * 0.02);
-              const fallbackTwoN = fallbackNValue * 2;
-              const fallbackStopLoss = position.avgPrice - fallbackTwoN;
-              const fallbackRiskAmount = position.quantity * fallbackTwoN;
-              
-              portfolioNValues.push({
-                symbol: position.symbol,
-                name: position.name,
-                currentPrice: position.currentPrice,
-                avgPrice: position.avgPrice,
-                quantity: position.quantity,
-                marketValue: position.currentPrice * position.quantity,
-                unrealizedPL: position.unrealizedPL || 0,
-                unrealizedPLPercent: position.avgPrice > 0 ? 
-                  Math.round(((position.currentPrice - position.avgPrice) / position.avgPrice) * 10000) / 100 : 0,
-                nValue: fallbackNValue,
-                twoN: fallbackTwoN,
-                stopLossPrice: Math.round(fallbackStopLoss),
-                riskAmount: Math.round(fallbackRiskAmount),
-                riskPercent: position.avgPrice > 0 ? Math.round((fallbackTwoN / position.avgPrice) * 10000) / 100 : 0,
-                isNearStopLoss: position.currentPrice <= fallbackStopLoss,
-                priceFromStopLoss: position.currentPrice - fallbackStopLoss,
-                dataStatus: 'FALLBACK_USED',
-                errorMessage: `${position.name} 가격 조회 실패로 추정 N값(${fallbackNValue}원) 사용`
-              });
+              // 가격 조회 실패시 에러 반환, 시뮬레이션 데이터 사용 안함
+              console.error(`❌ ${position.symbol} (${position.name}) 가격 데이터 조회 실패`);
+              throw new Error(`${position.name} (${position.symbol}) 가격 데이터를 조회할 수 없습니다. N값 계산이 불가능합니다.`);
             }
             
           } catch (error) {
             console.error(`❌ ${position.symbol} N값 계산 실패:`, error.message);
-            // 에러 발생시에도 fallback N값 사용 (현재가의 2%)
-            const fallbackNValue = Math.round(position.currentPrice * 0.02);
-            const fallbackTwoN = fallbackNValue * 2;
-            const fallbackStopLoss = position.avgPrice - fallbackTwoN;
-            const fallbackRiskAmount = position.quantity * fallbackTwoN;
-            
-            portfolioNValues.push({
-              symbol: position.symbol,
-              name: position.name,
-              currentPrice: position.currentPrice,
-              avgPrice: position.avgPrice,
-              quantity: position.quantity,
-              marketValue: position.currentPrice * position.quantity,
-              unrealizedPL: position.unrealizedPL || 0,
-              unrealizedPLPercent: position.avgPrice > 0 ? 
-                Math.round(((position.currentPrice - position.avgPrice) / position.avgPrice) * 10000) / 100 : 0,
-              nValue: fallbackNValue,
-              twoN: fallbackTwoN,
-              stopLossPrice: Math.round(fallbackStopLoss),
-              riskAmount: Math.round(fallbackRiskAmount),
-              riskPercent: position.avgPrice > 0 ? Math.round((fallbackTwoN / position.avgPrice) * 10000) / 100 : 0,
-              isNearStopLoss: position.currentPrice <= fallbackStopLoss,
-              priceFromStopLoss: position.currentPrice - fallbackStopLoss,
-              dataStatus: 'ERROR_FALLBACK_USED', 
-              errorMessage: `${position.name} N값 계산 오류로 추정 N값(${fallbackNValue}원) 사용: ${error.message}`
-            });
+            // 에러 발생시 전체 분석 중단, 시뮬레이션 데이터 사용 안함
+            throw new Error(`${position.name} (${position.symbol}) N값 계산 중 오류가 발생했습니다: ${error.message}`);
           }
         }
       }
     } catch (accountError) {
       console.error('❌ 계좌 조회 실패:', accountError.message);
+      return res.status(500).json({
+        success: false,
+        error: 'PORTFOLIO_DATA_UNAVAILABLE',
+        message: '계좌 데이터 또는 가격 정보를 조회할 수 없습니다. 시뮬레이션 데이터는 사용하지 않습니다.',
+        timestamp: new Date().toISOString(),
+        details: accountError.message
+      });
     }
     
     // 포트폴리오 전체 리스크 분석
@@ -1583,8 +1542,9 @@ router.get('/portfolio-n-values', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'PORTFOLIO_N_VALUES_FAILED',
-      message: error.message,
-      timestamp: new Date().toISOString()
+      message: error.message || '포트폴리오 데이터를 조회할 수 없습니다. 시뮬레이션 데이터는 사용하지 않습니다.',
+      timestamp: new Date().toISOString(),
+      details: '실제 계좌 및 가격 데이터를 조회할 수 없어 N값 계산을 중단했습니다.'
     });
   }
 });
