@@ -1543,6 +1543,11 @@ router.get('/portfolio-n-values', async (req, res) => {
               if (!atr || atr <= 0) {
                 throw new Error(`${position.name} (${position.symbol}) ATR 계산 결과가 유효하지 않습니다.`);
               }
+              
+              // 10일 최저가 계산 (터틀 트레이딩 매도 신호용)
+              const lows = priceData.map(d => d.low);
+              const low10 = lows.length >= 11 ? Math.min(...lows.slice(1, 11)) : null; // 전일까지 10일
+              
               const nValue = Math.round(atr);
               const twoN = nValue * 2;
               const stopLossPrice = position.avgPrice - twoN;
@@ -1565,10 +1570,13 @@ router.get('/portfolio-n-values', async (req, res) => {
                 nValue: nValue,                    // N값 (ATR)
                 twoN: twoN,                       // 2N (손절 거리)
                 stopLossPrice: Math.round(stopLossPrice),  // 터틀 손절가
+                low10: low10 ? Math.round(low10) : null,   // 10일 최저가 (터틀 매도 신호)
                 riskAmount: Math.round(riskAmount),        // 종목별 리스크 금액
                 riskPercent: position.avgPrice > 0 ? Math.round((twoN / position.avgPrice) * 10000) / 100 : 0, // 리스크 퍼센트
                 isNearStopLoss: position.currentPrice <= stopLossPrice, // 손절가 근접 여부
+                isNearSellSignal: low10 ? position.currentPrice <= low10 : false, // 10일 최저가 매도 신호 근접
                 priceFromStopLoss: position.currentPrice - stopLossPrice, // 손절가와의 거리
+                priceFromLow10: low10 ? position.currentPrice - low10 : null, // 10일 최저가와의 거리
                 dataStatus: 'REAL_DATA' // 실제 데이터 사용
               });
               
