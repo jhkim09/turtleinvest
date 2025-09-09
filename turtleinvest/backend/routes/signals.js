@@ -1556,7 +1556,9 @@ router.get('/portfolio-n-values', async (req, res) => {
               
               // 10일 최저가 계산 (터틀 트레이딩 매도 신호용)
               const lows = priceData.map(d => d.low);
+              console.log(`🔍 ${position.symbol} 첫 3일 가격 데이터:`, priceData.slice(0, 3).map(d => ({ date: d.date, close: d.close, low: d.low })));
               const low10 = lows.length >= 11 ? Math.min(...lows.slice(1, 11)) : null; // 전일까지 10일
+              console.log(`📉 ${position.symbol} 10일 최저가 계산: ${low10}원, 현재가: ${position.currentPrice}원`);
               
               const nValue = Math.round(atr);
               const twoN = nValue * 2;
