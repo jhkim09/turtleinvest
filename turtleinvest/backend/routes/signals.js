@@ -8,14 +8,7 @@ const FinancialData = require('../models/FinancialData');
 
 // ETF 종목 식별 함수
 function isETFStock(symbol, name) {
-  // ETF 종목 코드 패턴 (TIGER, KODEX, ARIRANG 등)
-  const etfPrefixes = [
-    'A1', // TIGER ETF 시리즈 (A133690 등)
-    'A2', // KODEX ETF 시리즈 일부
-    'A3'  // 기타 ETF 시리즈
-  ];
-  
-  // ETF 이름 패턴
+  // 이름 패턴으로만 ETF 식별 (코드 패턴은 너무 광범위함)
   const etfNamePatterns = [
     'TIGER', 'KODEX', 'ARIRANG', 'KBSTAR', 'HANARO', 
     'SMART', 'ACE', 'TREX', 'TIMEFOLIO',
@@ -24,24 +17,18 @@ function isETFStock(symbol, name) {
     '레버리지', '인버스'
   ];
   
-  // 코드 패턴 체크
-  if (symbol && symbol.length >= 6) {
-    const prefix = symbol.substring(0, 2);
-    if (etfPrefixes.includes(prefix)) {
-      return true;
-    }
-  }
-  
-  // 이름 패턴 체크
+  // 이름 패턴 체크만 사용
   if (name) {
     const upperName = name.toUpperCase();
     for (const pattern of etfNamePatterns) {
       if (upperName.includes(pattern.toUpperCase())) {
+        console.log(`🔍 ETF 감지: ${symbol} (${name}) - 패턴: ${pattern}`);
         return true;
       }
     }
   }
   
+  console.log(`📊 일반 주식: ${symbol} (${name}) - ETF 아님`);
   return false;
 }
 
