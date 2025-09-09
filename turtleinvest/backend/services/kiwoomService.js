@@ -411,7 +411,11 @@ class KiwoomService {
         
         if (response.data && response.data.return_code === 0) {
           console.log(`✅ 키움 API: ${symbol} 일봉 데이터 조회 성공`);
-          const chartData = response.data.chart_data || [];
+          
+          // 키움 API 응답 구조 디버깅
+          console.log(`🔍 ${symbol} 키움 API 전체 응답:`, JSON.stringify(response.data, null, 2));
+          
+          const chartData = response.data.daly_stkpc || response.data.chart_data || [];
           
           // 디버깅: 첫 번째 데이터 구조 확인
           if (chartData.length > 0) {
