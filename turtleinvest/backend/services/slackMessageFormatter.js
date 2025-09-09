@@ -200,6 +200,14 @@ class SlackMessageFormatter {
           message += `   • 매수가: ${(position.avgPrice || 0).toLocaleString()}원\n`;
           message += `   • N값(ATR): ${(position.nValue || 0).toLocaleString()}원\n`;
           message += `   • 터틀 손절가: ${(position.stopLossPrice || 0).toLocaleString()}원 (매수가 - 2N)\n`;
+          
+          // 10일 최저가 정보 추가
+          if (position.low10 !== null && position.low10 !== undefined) {
+            const sellSignalEmoji = position.isNearSellSignal ? '⚠️' : '✅';
+            const sellSignalText = position.isNearSellSignal ? '매도신호' : '안전';
+            message += `   • 10일 최저가: ${position.low10.toLocaleString()}원 (${sellSignalText}: ${sellSignalEmoji})\n`;
+          }
+          
           message += `   • 보유수량: ${(position.quantity || 0).toLocaleString()}주\n`;
           message += `   ${profitLossEmoji} 손익: ${(position.unrealizedPL || 0).toLocaleString()}원 (${(position.unrealizedPLPercent || 0) >= 0 ? '+' : ''}${position.unrealizedPLPercent || 0}%)\n`;
           message += `   ${riskLevelEmoji} 리스크: ${(position.riskAmount || 0).toLocaleString()}원 (${position.riskPercent || 0}%)\n`;
