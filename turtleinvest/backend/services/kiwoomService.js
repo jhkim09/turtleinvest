@@ -420,12 +420,12 @@ class KiwoomService {
           }
           
           const dailyData = chartData.slice(0, days).map(item => ({
-            date: item.dt,
-            open: parseInt(item.op_pric || item.open_price || '0'),
-            high: parseInt(item.hg_pric || item.high_price || '0'),
-            low: parseInt(item.lw_pric || item.low_price || '0'),
-            close: parseInt(item.cls_pric || item.close_price || '0'),
-            volume: parseInt(item.tr_vol || item.volume || '0')
+            date: item.date,
+            open: parseInt(item.open_pric || '0'),
+            high: parseInt(item.high_pric || '0'),
+            low: parseInt(item.low_pric || '0'),
+            close: parseInt(item.close_pric || '0'),
+            volume: parseInt(item.trde_qty || '0')
           })).filter(item => item.close > 0); // 유효하지 않은 데이터 필터링
           
           console.log(`📊 ${symbol} 키움 API 파싱 결과: ${dailyData.length}개 유효 데이터, 최근가 ${dailyData[0]?.close}원`);
