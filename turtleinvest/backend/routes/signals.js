@@ -1613,9 +1613,17 @@ router.get('/portfolio-n-values', async (req, res) => {
               }
               
               // 10일 최저가 계산 (터틀 트레이딩 매도 신호용)
-              const lows = priceData.map(d => d.low);
-              console.log(`🔍 ${position.symbol} 첫 3일 가격 데이터:`, priceData.slice(0, 3).map(d => ({ date: d.date, close: d.close, low: d.low })));
-              const low10 = lows.length >= 11 ? Math.min(...lows.slice(1, 11)) : null; // 전일까지 10일
+              // 키움 API 데이터는 과거부터 정렬되어 있음 → 뒤집어서 최신부터 만들기
+              const sortedPriceData = priceData.slice().reverse(); // 최신 데이터부터 정렬
+              const lows = sortedPriceData.map(d => d.low);
+              
+              console.log(`🔍 ${position.symbol} 최신 5일 가격 데이터:`, sortedPriceData.slice(0, 5).map(d => ({ date: d.date, close: d.close, low: d.low })));
+              
+              // 전일부터 10일간의 최저가 (오늘 제외, 최근 10일)
+              const low10Array = lows.slice(1, 11); // 1번째~10번째 = 전일부터 10일
+              const low10 = lows.length >= 11 ? Math.min(...low10Array) : null; 
+              
+              console.log(`📉 ${position.symbol} 10일 최저가 배열 (전일부터 10일):`, low10Array);
               console.log(`📉 ${position.symbol} 10일 최저가 계산: ${low10}원, 현재가: ${position.currentPrice}원`);
               
               const nValue = Math.round(atr);
