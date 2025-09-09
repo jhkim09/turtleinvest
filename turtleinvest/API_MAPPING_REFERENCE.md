@@ -24,7 +24,7 @@
 | `/api/signals/latest` | GET | `Signal.find()` | MongoDB | 최신 터틀 신호 10개 조회 |
 | `/api/signals/analysis-details` | GET | `TurtleAnalyzer.analyzeMarket()` | TurtleAnalyzer, KiwoomService | 전체 시장 분석 및 신호 생성 |
 | `/api/signals/risk` | GET | `TurtleAnalyzer.analyzeMarket()` + 리스크 계산 | TurtleAnalyzer, PortfolioTracker | 신호 + 리스크 분석 |
-| `/api/signals/portfolio-n-values` | GET | `KiwoomService.getAccountBalance()` + `TurtleAnalyzer.calculateATR()` | KiwoomService, TurtleAnalyzer | 보유종목 N값(ATR) 분석 |
+| `/api/signals/portfolio-n-values` | GET | `KiwoomService.getAccountBalance()` + `TurtleAnalyzer.calculateATR()` + 10일 최저가 계산 | KiwoomService, TurtleAnalyzer | 보유종목 N값(ATR) 및 10일 최저가 분석 |
 
 ### 주요 호출 체인
 
@@ -44,9 +44,11 @@
 
 /api/signals/portfolio-n-values
 ├── KiwoomService.getAccountBalance()
+├── ETF 종목 필터링 (TIGER, KODEX 등 제외)
 ├── TurtleAnalyzer.getPriceData() (각 보유종목별)
-├── TurtleAnalyzer.calculateATR()
-└── SlackMessageFormatter.formatPortfolioNValues()
+├── TurtleAnalyzer.calculateATR() (N값 계산)
+├── 10일 최저가 계산 (최근 10일 최저가)
+└── SlackMessageFormatter.formatPortfolioNValues() (10일 최저가 포함)
 ```
 
 ---
@@ -121,7 +123,14 @@ StockName.getBulkStockNames()
 /api/kiwoom/daily/:symbol
 └── KiwoomService.getDailyData(symbol, days)
     ├── YahooFinanceService.getHistoricalData() (우선 시도)
-    ├── 키움 API 호출 (연결시)
+    ├── 키움 API 호출 (연결시) - TR: ka10081
+    │   └── response.data.stk_dt_pole_chart_qry[] 파싱
+    │       ├── cur_pric: 종가(현재가)
+    │       ├── open_pric: 시가  
+    │       ├── high_pric: 고가
+    │       ├── low_pric: 저가
+    │       ├── trde_qty: 거래량
+    │       └── dt: 날짜 (YYYYMMDD)
     ├── getSimulationDailyData() (fallback - 시뮬레이션)
     └── TurtleAnalyzer.detectSimulationData() (필터링)
 
@@ -228,4 +237,80 @@ const correctedNames = {
 
 ---
 
-*이 문서는 2025년 9월 2일 기준으로 작성되었으며, 코드 변경시 함께 업데이트되어야 합니다.*
+## 📊 포트폴리오 N값 분석 상세 로직
+
+### `/api/signals/portfolio-n-values` 처리 과정
+
+1. **계좌 조회**: `KiwoomService.getAccountBalance()`
+   - 키움 API 계좌잔고조회 (TR: opw00004)
+   - 보유종목 목록 추출
+
+2. **ETF 종목 필터링**: `isETFStock(symbol, name)`
+   ```javascript
+   // 제외되는 ETF 패턴:
+   ['TIGER', 'KODEX', 'ARIRANG', 'KBSTAR', '미국나스닥', 'ETF', 'ETN']
+   // 예: A133690 (TIGER 미국나스닥100) → 제외
+   ```
+
+3. **가격 데이터 조회**: `TurtleAnalyzer.getPriceData(symbol, 25)`
+   - Yahoo Finance API 시도 (종종 404/429 에러)
+   - 키움 API 일봉 데이터 조회 (TR: ka10081)
+   - 시뮬레이션 데이터 감지 및 제거
+
+4. **키움 API 일봉 응답 구조** (TR: ka10081):
+   ```json
+   {
+     "stk_dt_pole_chart_qry": [
+       {
+         "cur_prc": "63400",    // 종가(현재가) ✅
+         "open_pric": "64100",  // 시가 ✅
+         "high_pric": "64300",  // 고가 ✅
+         "low_pric": "62900",   // 저가 ✅
+         "trde_qty": "65300",   // 거래량 ✅
+         "dt": "20250909"       // 날짜 ✅
+       }
+     ]
+   }
+   ```
+
+5. **N값(ATR) 계산**: `TurtleAnalyzer.calculateATR(priceData.slice(0, 21))`
+   - 최근 21일 데이터 사용
+   - True Range 계산 후 20일 평균
+
+6. **10일 최저가 계산**: 
+   ```javascript
+   // 키움 데이터는 과거→현재 순서 → reverse()로 뒤집기
+   const sortedPriceData = priceData.slice().reverse(); // 최신부터
+   const lows = sortedPriceData.map(d => d.low);
+   const low10 = Math.min(...lows.slice(1, 11)); // 전일부터 10일간 최저가
+   ```
+
+7. **터틀 매도 신호 판단**:
+   - `isNearSellSignal`: 현재가 ≤ 10일 최저가
+   - 매도신호 발생시 슬랙에서 "⚠️" 표시
+
+8. **슬랙 메시지 포맷** (`SlackMessageFormatter.formatPortfolioNValues()`):
+   ```
+   • 10일 최저가: 55,200원 (안전: ✅)
+   ```
+
+### 🔧 주요 수정 이력 (2025.9.9)
+
+1. **키움 API 필드명 수정**:
+   - ❌ `daly_stkpc` → ✅ `stk_dt_pole_chart_qry`
+   - ❌ `close_pric` → ✅ `cur_pric`
+
+2. **ETF 종목 제외 로직 추가**:
+   - TIGER 미국나스닥100 (A133690) 등 ETF는 N값 계산 제외
+
+3. **10일 최저가 계산 로직 수정**:
+   - 데이터 정렬 순서 수정 (reverse() 추가)
+   - 올바른 최근 10일 범위 계산
+
+4. **시뮬레이션 데이터 감지 강화**:
+   - 하드코딩된 `return false` 제거
+   - 가격 현실성 체크 및 날짜 유효성 검증
+
+---
+
+*이 문서는 2025년 9월 9일 기준으로 업데이트되었으며, 10일 최저가 기능이 추가되었습니다.*
