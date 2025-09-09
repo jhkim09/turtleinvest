@@ -6,6 +6,45 @@ const SuperstocksAnalyzer = require('../services/superstocksAnalyzer');
 const SlackMessageFormatter = require('../services/slackMessageFormatter');
 const FinancialData = require('../models/FinancialData');
 
+// ETF 종목 식별 함수
+function isETFStock(symbol, name) {
+  // ETF 종목 코드 패턴 (TIGER, KODEX, ARIRANG 등)
+  const etfPrefixes = [
+    'A1', // TIGER ETF 시리즈 (A133690 등)
+    'A2', // KODEX ETF 시리즈 일부
+    'A3'  // 기타 ETF 시리즈
+  ];
+  
+  // ETF 이름 패턴
+  const etfNamePatterns = [
+    'TIGER', 'KODEX', 'ARIRANG', 'KBSTAR', 'HANARO', 
+    'SMART', 'ACE', 'TREX', 'TIMEFOLIO',
+    '미국나스닥', '나스닥', 'S&P', 'QQQ',
+    'ETF', 'ETN', '인덱스', '추적',
+    '레버리지', '인버스'
+  ];
+  
+  // 코드 패턴 체크
+  if (symbol && symbol.length >= 6) {
+    const prefix = symbol.substring(0, 2);
+    if (etfPrefixes.includes(prefix)) {
+      return true;
+    }
+  }
+  
+  // 이름 패턴 체크
+  if (name) {
+    const upperName = name.toUpperCase();
+    for (const pattern of etfNamePatterns) {
+      if (upperName.includes(pattern.toUpperCase())) {
+        return true;
+      }
+    }
+  }
+  
+  return false;
+}
+
 // API 헬스체크 및 상태 확인
 router.get('/health', async (req, res) => {
   try {
@@ -1527,6 +1566,38 @@ router.get('/portfolio-n-values', async (req, res) => {
         for (const position of accountData.positions) {
           try {
             console.log(`📈 ${position.symbol} (${position.name}) N값 계산 중...`);
+            
+            // ETF 종목 제외 (터틀 트레이딩에 적합하지 않음)
+            const isETF = isETFStock(position.symbol, position.name);
+            if (isETF) {
+              console.log(`📊 ${position.symbol} (${position.name}): ETF 종목으로 N값 계산 제외`);
+              
+              portfolioNValues.push({
+                symbol: position.symbol,
+                name: position.name,
+                currentPrice: position.currentPrice,
+                avgPrice: position.avgPrice,
+                quantity: position.quantity,
+                marketValue: position.currentPrice * position.quantity,
+                unrealizedPL: position.unrealizedPL || 0,
+                unrealizedPLPercent: position.avgPrice > 0 ? 
+                  ((position.currentPrice - position.avgPrice) / position.avgPrice) * 100 : 0,
+                nValue: null,
+                twoN: null,
+                stopLossPrice: null,
+                low10: null,
+                riskAmount: 0,
+                riskPercent: 0,
+                isNearStopLoss: false,
+                isNearSellSignal: false,
+                priceFromStopLoss: null,
+                priceFromLow10: null,
+                dataStatus: 'ETF_EXCLUDED',
+                excludeReason: 'ETF 종목은 터틀 트레이딩 분석에서 제외됩니다.'
+              });
+              
+              continue; // 다음 종목으로
+            }
             
             // 실제 데이터만 사용 (시뮬레이션 데이터 제외)
             let priceData = null;
