@@ -1546,7 +1546,15 @@ router.get('/portfolio-n-values', async (req, res) => {
               
               // 10일 최저가 계산 (터틀 트레이딩 매도 신호용)
               const lows = priceData.map(d => d.low);
+              console.log(`📊 ${position.symbol} 가격 데이터: ${priceData.length}일, 최저가 데이터: ${lows.length}개`);
               const low10 = lows.length >= 11 ? Math.min(...lows.slice(1, 11)) : null; // 전일까지 10일
+              console.log(`📉 ${position.symbol} 10일 최저가: ${low10}원 (계산 가능: ${lows.length >= 11})`);
+              
+              // 최저가 배열의 일부 확인 (디버깅용)
+              if (lows.length >= 11) {
+                const low10Array = lows.slice(1, 11);
+                console.log(`🔍 ${position.symbol} 10일 최저가 배열:`, low10Array);
+              }
               
               const nValue = Math.round(atr);
               const twoN = nValue * 2;
