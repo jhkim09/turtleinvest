@@ -646,9 +646,34 @@ class TurtleAnalyzer {
   static detectSimulationData(data, symbol) {
     if (!data || data.length < 5) return false;
     
-    // 키움 API가 실제로 연결된 상황에서는 시뮬레이션 데이터 감지를 비활성화
-    // 실제 거래 데이터를 시뮬레이션으로 잘못 판단하는 것을 방지
-    return false;
+    // 1. 가격 데이터의 현실성 체크 - 현재가와 히스토리 가격 차이
+    const latestClose = data[0]?.close;
+    const historicalPrices = data.slice(0, 10).map(d => d.close);
+    
+    // 최근 10일 가격 중 현재가와 너무 큰 차이가 나는 경우 시뮬레이션 의심
+    const maxHistoricalPrice = Math.max(...historicalPrices);
+    const minHistoricalPrice = Math.min(...historicalPrices);
+    
+    // 가격 차이가 50% 이상 나면 시뮬레이션 데이터 의심
+    if (latestClose > 0) {
+      const priceVariation1 = Math.abs(maxHistoricalPrice - latestClose) / latestClose;
+      const priceVariation2 = Math.abs(minHistoricalPrice - latestClose) / latestClose;
+      
+      if (priceVariation1 > 0.5 || priceVariation2 > 0.5) {
+        console.log(`⚠️ ${symbol}: 가격 데이터 이상 감지 - 현재가 ${latestClose}원 vs 히스토리 ${minHistoricalPrice}-${maxHistoricalPrice}원`);
+        return true;
+      }
+    }
+    
+    // 2. 날짜 패턴 체크 - 미래 날짜나 너무 오래된 날짜
+    const today = new Date();
+    const latestDate = new Date(data[0]?.date);
+    const daysDiff = Math.abs(today - latestDate) / (1000 * 60 * 60 * 24);
+    
+    if (daysDiff > 10) {
+      console.log(`⚠️ ${symbol}: 데이터가 너무 오래됨 - 최근 데이터: ${data[0]?.date}`);
+      return true; // 10일 이상 오래된 데이터는 시뮬레이션 의심
+    }
     
     // 2. 데이터 패턴이 너무 인위적인지 체크
     const prices = data.slice(0, 10).map(d => d.close);
