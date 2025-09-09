@@ -1528,10 +1528,20 @@ router.get('/portfolio-n-values', async (req, res) => {
           try {
             console.log(`📈 ${position.symbol} (${position.name}) N값 계산 중...`);
             
-            // 키움 서비스에서 직접 가격 데이터 조회 (시뮬레이션 데이터 사용 안함)
+            // 실제 데이터만 사용 (시뮬레이션 데이터 제외)
             let priceData = null;
             try {
-              priceData = await KiwoomService.getDailyData(position.symbol, 25);
+              // TurtleAnalyzer의 getPriceData 사용 (시뮬레이션 데이터 필터링됨)
+              priceData = await TurtleAnalyzer.getPriceData(position.symbol, 25);
+              
+              // 추가 검증: 시뮬레이션 데이터 감지
+              if (priceData && priceData.length > 0) {
+                const isSimulation = TurtleAnalyzer.detectSimulationData(priceData, position.symbol);
+                if (isSimulation) {
+                  console.log(`⚠️ ${position.symbol}: 시뮬레이션 데이터 감지, 실제 데이터 없음`);
+                  priceData = [];
+                }
+              }
             } catch (priceError) {
               console.error(`❌ ${position.symbol} 가격 조회 실패: ${priceError.message}`);
               priceData = null;
