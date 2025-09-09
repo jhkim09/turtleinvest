@@ -416,6 +416,7 @@ class KiwoomService {
           // 디버깅: 첫 번째 데이터 구조 확인
           if (chartData.length > 0) {
             console.log(`🔍 ${symbol} 키움 API 첫 번째 데이터:`, JSON.stringify(chartData[0], null, 2));
+            console.log(`🔍 ${symbol} 키움 API 모든 필드명:`, Object.keys(chartData[0]));
           }
           
           const dailyData = chartData.slice(0, days).map(item => ({
