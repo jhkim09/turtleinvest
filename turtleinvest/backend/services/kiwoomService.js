@@ -412,23 +412,14 @@ class KiwoomService {
         if (response.data && response.data.return_code === 0) {
           console.log(`✅ 키움 API: ${symbol} 일봉 데이터 조회 성공`);
           
-          // 키움 API 응답 구조 디버깅
-          console.log(`🔍 ${symbol} 키움 API 전체 응답:`, JSON.stringify(response.data, null, 2));
-          
-          const chartData = response.data.daly_stkpc || response.data.chart_data || [];
-          
-          // 디버깅: 첫 번째 데이터 구조 확인
-          if (chartData.length > 0) {
-            console.log(`🔍 ${symbol} 키움 API 첫 번째 데이터:`, JSON.stringify(chartData[0], null, 2));
-            console.log(`🔍 ${symbol} 키움 API 모든 필드명:`, Object.keys(chartData[0]));
-          }
+          const chartData = response.data.stk_dt_pole_chart_qry || [];
           
           const dailyData = chartData.slice(0, days).map(item => ({
-            date: item.date,
+            date: item.dt,
             open: parseInt(item.open_pric || '0'),
             high: parseInt(item.high_pric || '0'),
             low: parseInt(item.low_pric || '0'),
-            close: parseInt(item.close_pric || '0'),
+            close: parseInt(item.cur_prc || '0'),  // 종가는 cur_prc 필드
             volume: parseInt(item.trde_qty || '0')
           })).filter(item => item.close > 0); // 유효하지 않은 데이터 필터링
           
