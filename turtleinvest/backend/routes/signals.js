@@ -616,9 +616,11 @@ router.post('/make-analysis/buy', async (req, res) => {
         analysisType: 'buy_signals_analysis',
         market: 'KRX',
         apiVersion: '3.0'
-      },
-      slackMessage: SlackMessageFormatter.formatBuySignals(result)
+      }
     };
+
+    // Add Slack message after result is fully initialized
+    result.slackMessage = SlackMessageFormatter.formatBuySignals(result);
     
     res.json(result);
     

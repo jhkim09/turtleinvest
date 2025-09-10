@@ -10,7 +10,13 @@
       "mcp__tally__add_multiple_choice_question",
       "mcp__tally__add_input_date_question",
       "mcp__tally__add_number_input_question",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(npm start)",
+      "WebFetch(domain:localhost)",
+      "Bash(curl:*)",
+      "Bash(taskkill:*)",
+      "Bash(cmd /c:*)",
+      "Read(//c/Users/newsh/test-project/**)"
     ],
     "deny": [],
     "ask": []
