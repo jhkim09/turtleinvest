@@ -670,9 +670,9 @@ class TurtleAnalyzer {
     const latestDate = new Date(data[0]?.date);
     const daysDiff = Math.abs(today - latestDate) / (1000 * 60 * 60 * 24);
     
-    if (daysDiff > 10) {
+    if (daysDiff > 90) {
       console.log(`⚠️ ${symbol}: 데이터가 너무 오래됨 - 최근 데이터: ${data[0]?.date}`);
-      return true; // 10일 이상 오래된 데이터는 시뮬레이션 의심
+      return true; // 90일 이상 오래된 데이터는 유효하지 않음
     }
     
     // 2. 데이터 패턴이 너무 인위적인지 체크

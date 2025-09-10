@@ -434,14 +434,14 @@ class KiwoomService {
         }
       }
       
-      // 3. 모든 실제 데이터 실패시에만 시뮬레이션 사용
-      console.log(`⚠️ ${symbol}: 실제 데이터 없음, 시뮬레이션 사용`);
-      return this.getSimulationDailyData(symbol, days);
+      // 3. 실제 데이터 없으면 빈 배열 반환 (시뮬레이션 사용 안함)
+      console.log(`⚠️ ${symbol}: 실제 데이터 없음, 분석 제외`);
+      return [];
       
     } catch (error) {
       console.error(`일봉 데이터 조회 실패 (${symbol}):`, error.message);
-      // 최종 백업: 시뮬레이션 데이터
-      return this.getSimulationDailyData(symbol, days);
+      // 최종 백업: 빈 배열 반환 (시뮬레이션 사용 안함)
+      return [];
     }
   }
   
