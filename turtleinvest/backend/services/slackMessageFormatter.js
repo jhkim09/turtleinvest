@@ -126,10 +126,22 @@ class SlackMessageFormatter {
         });
       }
       
-      // 슈퍼스톡 BUY 후보
+      // 슈퍼스톡 BUY 후보 (중복 제거)
       if (buyAnalysisResult.buySignals.superstocks && buyAnalysisResult.buySignals.superstocks.length > 0) {
         message += `⭐ **슈퍼스톡 매수 후보**\n\n`;
-        buyAnalysisResult.buySignals.superstocks.forEach((stock, index) => {
+        
+        // 중복 제거 후 유니크한 종목만 표시
+        const uniqueStocks = [];
+        const seenSymbols = new Set();
+        
+        for (const stock of buyAnalysisResult.buySignals.superstocks) {
+          if (!seenSymbols.has(stock.symbol)) {
+            seenSymbols.add(stock.symbol);
+            uniqueStocks.push(stock);
+          }
+        }
+        
+        uniqueStocks.forEach((stock, index) => {
           const dataSourceEmoji = stock.dataSource === 'DART_REALTIME' ? '📊' : '💡';
           const dataSourceText = stock.dataSource === 'DART_REALTIME' ? 'DART' : 'EST';
           message += `${index + 1}. **${stock.name}** (${stock.symbol}) ${dataSourceEmoji}${dataSourceText}\n`;
@@ -260,6 +272,149 @@ class SlackMessageFormatter {
     }
   }
   
+  // 각 카테고리별로 분리된 JSON 응답 생성
+  static formatSeparateCategories(buyAnalysisResult) {
+    try {
+      const timestamp = new Date(buyAnalysisResult.timestamp).toLocaleDateString('ko-KR');
+      
+      // 1. 터틀 신호만 따로
+      const turtleResult = {
+        success: true,
+        timestamp: buyAnalysisResult.timestamp,
+        signalType: 'TURTLE_BUY',
+        summary: {
+          turtleBuySignals: buyAnalysisResult.summary.turtleBuySignals || 0,
+          hasBuyOpportunity: (buyAnalysisResult.summary.turtleBuySignals || 0) > 0
+        },
+        signals: buyAnalysisResult.buySignals.turtle || [],
+        investmentSettings: buyAnalysisResult.investmentSettings,
+        slackMessage: this.formatTurtleOnly(buyAnalysisResult, timestamp)
+      };
+      
+      // 2. 슈퍼스톡만 따로
+      const superstockResult = {
+        success: true,
+        timestamp: buyAnalysisResult.timestamp,
+        signalType: 'SUPERSTOCK_CANDIDATES',
+        summary: {
+          qualifiedSuperstocks: buyAnalysisResult.summary.qualifiedSuperstocks || 0,
+          hasBuyOpportunity: (buyAnalysisResult.summary.qualifiedSuperstocks || 0) > 0
+        },
+        candidates: buyAnalysisResult.buySignals.superstocks || [],
+        slackMessage: this.formatSuperstockOnly(buyAnalysisResult, timestamp)
+      };
+      
+      // 3. 프리미엄 기회만 따로
+      const premiumResult = {
+        success: true,
+        timestamp: buyAnalysisResult.timestamp,
+        signalType: 'PREMIUM_OPPORTUNITIES',
+        summary: {
+          premiumBuyOpportunities: buyAnalysisResult.summary.premiumBuyOpportunities || 0,
+          hasBuyOpportunity: (buyAnalysisResult.summary.premiumBuyOpportunities || 0) > 0
+        },
+        opportunities: buyAnalysisResult.buySignals.premium || [],
+        slackMessage: this.formatPremiumOnly(buyAnalysisResult, timestamp)
+      };
+      
+      return {
+        turtle: turtleResult,
+        superstock: superstockResult,
+        premium: premiumResult
+      };
+      
+    } catch (error) {
+      console.error('카테고리별 분리 포맷 실패:', error);
+      return {
+        turtle: { success: false, error: error.message },
+        superstock: { success: false, error: error.message },
+        premium: { success: false, error: error.message }
+      };
+    }
+  }
+  
+  // 터틀 신호만 포맷
+  static formatTurtleOnly(buyAnalysisResult, timestamp) {
+    let message = `🐢 **터틀 매수 신호** (${timestamp})\n\n`;
+    
+    if (buyAnalysisResult.buySignals.turtle && buyAnalysisResult.buySignals.turtle.length > 0) {
+      buyAnalysisResult.buySignals.turtle.forEach(signal => {
+        message += `📈 **${signal.name}** (${signal.symbol})\n`;
+        message += `   • 액션: ${signal.action}\n`;
+        message += `   • 현재가: ${signal.currentPrice.toLocaleString()}원\n`;
+        message += `   • 신호: ${signal.signalType}\n`;
+        if (signal.reasoning) {
+          message += `   • ${signal.reasoning}\n`;
+        }
+        message += '\n';
+      });
+      message += `📊 **요약**: 터틀 매수신호 ${buyAnalysisResult.buySignals.turtle.length}개`;
+    } else {
+      message += "오늘은 터틀 매수 신호가 없습니다.\n\n";
+      message += "📊 **요약**: 터틀 매수신호 0개";
+    }
+    
+    return message;
+  }
+  
+  // 슈퍼스톡만 포맷
+  static formatSuperstockOnly(buyAnalysisResult, timestamp) {
+    let message = `⭐ **슈퍼스톡 매수 후보** (${timestamp})\n\n`;
+    
+    if (buyAnalysisResult.buySignals.superstocks && buyAnalysisResult.buySignals.superstocks.length > 0) {
+      // 중복 제거 후 유니크한 종목만 표시
+      const uniqueStocks = [];
+      const seenSymbols = new Set();
+      
+      for (const stock of buyAnalysisResult.buySignals.superstocks) {
+        if (!seenSymbols.has(stock.symbol)) {
+          seenSymbols.add(stock.symbol);
+          uniqueStocks.push(stock);
+        }
+      }
+      
+      uniqueStocks.forEach((stock, index) => {
+        const dataSourceEmoji = stock.dataSource === 'DART_REALTIME' ? '📊' : '💡';
+        const dataSourceText = stock.dataSource === 'DART_REALTIME' ? 'DART' : 'EST';
+        message += `${index + 1}. **${stock.name}** (${stock.symbol}) ${dataSourceEmoji}${dataSourceText}\n`;
+        message += `   • 현재가: ${stock.currentPrice.toLocaleString()}원\n`;
+        message += `   • 매출성장: ${stock.revenueGrowth3Y.toFixed(1)}%\n`;
+        message += `   • 순이익성장: ${stock.netIncomeGrowth3Y.toFixed(1)}%\n`;
+        message += `   • PSR: ${stock.psr.toFixed(2)}\n`;
+        message += `   • 등급: ${stock.score}\n\n`;
+      });
+      message += `📊 **요약**: 슈퍼스톡 후보 ${uniqueStocks.length}개`;
+    } else {
+      message += "조건을 만족하는 슈퍼스톡이 없습니다.\n\n";
+      message += "📊 **요약**: 슈퍼스톡 후보 0개";
+    }
+    
+    return message;
+  }
+  
+  // 프리미엄 기회만 포맷
+  static formatPremiumOnly(buyAnalysisResult, timestamp) {
+    let message = `💎 **프리미엄 매수 기회** (${timestamp})\n\n`;
+    
+    if (buyAnalysisResult.buySignals.premium && buyAnalysisResult.buySignals.premium.length > 0) {
+      buyAnalysisResult.buySignals.premium.forEach(stock => {
+        message += `🎯 **${stock.name}** (${stock.symbol})\n`;
+        message += `   • 터틀신호: ${stock.turtleSignal}\n`;
+        message += `   • 터틀액션: ${stock.turtleAction}\n`;
+        message += `   • 슈퍼스톡등급: ${stock.superstocksScore}\n`;
+        message += `   • 현재가: ${stock.currentPrice.toLocaleString()}원\n`;
+        message += `   • 매출성장: ${stock.superstocksData.revenueGrowth3Y.toFixed(1)}%\n`;
+        message += `   • PSR: ${stock.superstocksData.psr.toFixed(2)}\n\n`;
+      });
+      message += `📊 **요약**: 프리미엄 기회 ${buyAnalysisResult.buySignals.premium.length}개`;
+    } else {
+      message += "터틀과 슈퍼스톡 조건을 모두 만족하는 종목이 없습니다.\n\n";
+      message += "📊 **요약**: 프리미엄 기회 0개";
+    }
+    
+    return message;
+  }
+
   // 간단한 테스트용 포맷터
   static formatTest(data) {
     return `🧪 **테스트 메시지**\n\n${JSON.stringify(data, null, 2)}`;

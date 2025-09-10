@@ -622,6 +622,9 @@ router.post('/make-analysis/buy', async (req, res) => {
     // Add Slack message after result is fully initialized
     result.slackMessage = SlackMessageFormatter.formatBuySignals(result);
     
+    // 분리된 카테고리별 응답 추가
+    result.separatedCategories = SlackMessageFormatter.formatSeparateCategories(result);
+    
     res.json(result);
     
   } catch (error) {
