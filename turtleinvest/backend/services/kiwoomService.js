@@ -450,22 +450,21 @@ class KiwoomService {
     try {
       console.log('🔍 계좌 잔고 조회 시작, 연결상태:', this.isConnected);
       
-      if (!this.isConnected) {
-        console.log('🔐 키움 API 미연결 상태, 인증 시도...');
-        console.log('🔑 환경변수 확인:', {
-          appKey: process.env.KIWOOM_APP_KEY ? '설정됨' : '미설정',
-          secretKey: process.env.KIWOOM_SECRET_KEY ? '설정됨' : '미설정'
-        });
-        
-        const authenticated = await this.authenticate(
-          process.env.KIWOOM_APP_KEY, 
-          process.env.KIWOOM_SECRET_KEY
-        );
-        
-        if (!authenticated) {
-          console.log('❌ 키움 API 인증 실패');
-          throw new Error('키움 API 연결에 실패했습니다. API 키를 확인하고 다시 시도해주세요.');
-        }
+      // 항상 재인증을 시도하여 토큰 유효성 보장
+      console.log('🔐 키움 API 재인증 시도...');
+      console.log('🔑 환경변수 확인:', {
+        appKey: process.env.KIWOOM_APP_KEY ? '설정됨' : '미설정',
+        secretKey: process.env.KIWOOM_SECRET_KEY ? '설정됨' : '미설정'
+      });
+      
+      const authenticated = await this.authenticate(
+        process.env.KIWOOM_APP_KEY, 
+        process.env.KIWOOM_SECRET_KEY
+      );
+      
+      if (!authenticated) {
+        console.log('❌ 키움 API 인증 실패');
+        throw new Error('키움 API 연결에 실패했습니다. API 키를 확인하고 다시 시도해주세요.');
       }
       
       // 실제 키움 API 호출 - 계좌평가잔고내역 (kt00018)
@@ -534,6 +533,28 @@ class KiwoomService {
       console.error('계좌 조회 실패:', error.message);
       if (error.response) {
         console.error('📋 에러 응답:', error.response.status, error.response.data);
+      }
+      
+      // 인증 오류인 경우 재인증 시도
+      if (error.message.includes('Token이 유효하지 않습니다') || 
+          error.message.includes('인증에 실패했습니다') ||
+          (error.response && error.response.status === 401)) {
+        console.log('🔄 토큰 만료 감지, 재인증 시도...');
+        this.isConnected = false;
+        
+        try {
+          const authenticated = await this.authenticate(
+            process.env.KIWOOM_APP_KEY, 
+            process.env.KIWOOM_SECRET_KEY
+          );
+          
+          if (authenticated) {
+            console.log('✅ 재인증 성공, 계좌 조회 재시도...');
+            return await this.getAccountBalance(); // 재귀 호출
+          }
+        } catch (authError) {
+          console.error('❌ 재인증 실패:', authError.message);
+        }
       }
       
       // API 오류시 에러 발생
